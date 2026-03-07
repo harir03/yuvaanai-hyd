@@ -1,0 +1,46 @@
+================================================================================
+CREDIT APPRAISAL MEMO — CONFIDENTIAL
+================================================================================
+Date: 07 March 2026
+Session: test-stages-002
+Borrower: Test Corp
+
+--------------------------------------------------------------------------------
+EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+Credit Score: 410/850 (Very Poor)
+Recommendation: REJECTED — Reject
+
+--------------------------------------------------------------------------------
+SCORE BREAKDOWN BY MODULE
+--------------------------------------------------------------------------------
+  CAPACITY    :   +0 points (range: -100 to +150, 0 metric(s))
+  CHARACTER   :  +45 points (range: -200 to +120, 2 metric(s))
+  CAPITAL     :   +0 points (range: -80 to +80, 0 metric(s))
+  COLLATERAL  :  +15 points (range: -40 to +60, 1 metric(s))
+  CONDITIONS  :   +0 points (range: -50 to +50, 0 metric(s))
+  COMPOUND    :   +0 points (range: -130 to +57, 0 metric(s))
+  BASE        : +350
+  TOTAL       :  410/850
+
+--------------------------------------------------------------------------------
+DETAILED METRIC BREAKDOWN
+--------------------------------------------------------------------------------
+  [CHARACTER] Auditor Qualifications: Clean opinion
+    Impact: +30 | Confidence: 92%
+    Source: Annual Report (p.9)
+    Reasoning: Clean audit opinion indicates good governance and transparent reporting
+
+  [CHARACTER] Cheque Bounces: 0 bounces
+    Impact: +15 | Confidence: 94%
+    Source: Bank Statement (p.1)
+    Reasoning: Zero cheque bounces demonstrates consistent financial discipline
+
+  [COLLATERAL] Collateral Coverage: Assumed — pending T1 valuation
+    Impact: +15 | Confidence: 50%
+    Source: Assessment Default (p.0)
+    Reasoning: Default moderate collateral score — full valuation in T1
+
+================================================================================
+END OF CREDIT APPRAISAL MEMO
+================================================================================

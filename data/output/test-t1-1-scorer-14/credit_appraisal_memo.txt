@@ -1,0 +1,51 @@
+================================================================================
+CREDIT APPRAISAL MEMO — CONFIDENTIAL
+================================================================================
+Date: 07 March 2026
+Session: test-t1-1-scorer-14
+Borrower: XYZ Steel
+
+--------------------------------------------------------------------------------
+EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+Credit Score: 375/850 (Very Poor)
+Recommendation: REJECTED — Reject
+
+--------------------------------------------------------------------------------
+SCORE BREAKDOWN BY MODULE
+--------------------------------------------------------------------------------
+  CAPACITY    :   +0 points (range: -100 to +150, 0 metric(s))
+  CHARACTER   :  +45 points (range: -200 to +120, 2 metric(s))
+  CAPITAL     :   +0 points (range: -80 to +80, 0 metric(s))
+  COLLATERAL  :  +15 points (range: -40 to +60, 1 metric(s))
+  CONDITIONS  :   +0 points (range: -50 to +50, 0 metric(s))
+  COMPOUND    :  -35 points (range: -130 to +57, 1 metric(s))
+  BASE        : +350
+  TOTAL       :  375/850
+
+--------------------------------------------------------------------------------
+DETAILED METRIC BREAKDOWN
+--------------------------------------------------------------------------------
+  [CHARACTER] Auditor Qualifications: Clean opinion
+    Impact: +30 | Confidence: 92%
+    Source: Annual Report (p.9)
+    Reasoning: Clean audit opinion indicates good governance and transparent reporting
+
+  [CHARACTER] Cheque Bounces: 0 bounces
+    Impact: +15 | Confidence: 94%
+    Source: Bank Statement (p.1)
+    Reasoning: Zero cheque bounces demonstrates consistent financial discipline
+
+  [COLLATERAL] Collateral Coverage: Assumed — pending T1 valuation
+    Impact: +15 | Confidence: 50%
+    Source: Assessment Default (p.0)
+    Reasoning: Default moderate collateral score — full valuation in T1
+
+  [COMPOUND] GSTR-2A vs 3B Mismatch: 17.0% ITC over-claim (High)
+    Impact: -35 | Confidence: 95%
+    Source: GST Returns (p.10)
+    Reasoning: GSTR-2A vs 3B mismatch of 17.0% significantly exceeds the industry average of ~3.5%. Likely causes: systematic late supplier filing or potential ITC fraud. Needs detailed supplier-wise reconciliation.
+
+================================================================================
+END OF CREDIT APPRAISAL MEMO
+================================================================================

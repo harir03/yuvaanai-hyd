@@ -208,15 +208,71 @@ The entire pipeline is a **LangGraph state machine**. A `CreditAppraisalState` P
 
 **LangGraph** provides explicit control over every node and edge with the `CreditAppraisalState` object persisting state across the entire flow. **LangChain** powers the agent framework within each node — document loaders, chains, RAG retrievers, tool integrations, and automatic LangSmith tracing.
 
+### CreditAppraisalState Object Structure
+
+The `CreditAppraisalState` (Pydantic v2) is the backbone of the entire pipeline. Every node reads from and writes to this object:
+
+```python
+class CreditAppraisalState(BaseModel):
+    # Session metadata
+    session_id: str
+    company: CompanyInfo
+    started_at: datetime
+    
+    # Stage tracking
+    current_stage: PipelineStageEnum
+    pipeline_stages: List[PipelineStage]
+    
+    # Worker tracking
+    workers_completed: int = 0
+    worker_outputs: Dict[str, WorkerOutput]  # W1..W9 keyed by worker_id
+    
+    # Agent outputs (populated as pipeline progresses)
+    raw_data_package: Optional[RawDataPackage]         # After Agent 0.5
+    organized_package: Optional[OrganizedPackage]       # After Agent 1.5
+    feature_object: Optional[FeatureObject]             # After Agent 1.5
+    research_package: Optional[VerifiedResearchPackage] # After Agent 2
+    graph_insights: Optional[GraphInsights]             # After Agent 2.5
+    evidence_package: Optional[EvidencePackage]         # After Evidence Builder
+    
+    # Site visit + management interview (optional inputs)
+    site_visit_data: Optional[SiteVisitExtraction]
+    management_interview_data: Optional[ManagementInterviewData]
+    management_credibility_score: Optional[float]       # 0.0–1.0
+    cibil_score: Optional[int]                          # CIBIL commercial score
+    
+    # Routing flags (set by any node, checked by conditional edges)
+    hard_block_triggered: bool = False
+    hard_block_reason: Optional[str]
+    fraud_detected: bool = False
+    fraud_type: Optional[str]
+    awaiting_human_input: bool = False
+    
+    # Tickets
+    tickets: List[Ticket]
+    
+    # Thinking events (complete AI thought log)
+    thinking_events: List[ThinkingEvent]
+    
+    # Final outputs (set by Agent 3)
+    final_score: Optional[int]                          # 0–850
+    score_band: Optional[ScoreBand]
+    score_breakdown: List[ScoreBreakdownEntry]
+    recommendation: Optional[LoanRecommendation]
+    cam_document_path: Optional[str]
+```
+
+Every LangGraph node receives this state and returns a partial update dict. The state accumulates knowledge as it flows through the pipeline.
+
 ---
 
 ## 4. Complete Agent Pipeline
 
 ---
 
-### Stage 1: Parallel Document Workers (8 Workers)
+### Stage 1: Parallel Document Workers (9 Workers)
 
-All 8 workers fire simultaneously as independent **Celery tasks** via **Redis** as the message broker. Each worker processes one document type and writes its output to a **Redis Staging Area**. Every worker emits **Thinking Events** to the Live Chatbot as it extracts data.
+All 9 workers fire simultaneously as independent **Celery tasks** via **Redis** as the message broker. Each worker processes one document type and writes its output to a **Redis Staging Area**. Every worker emits **Thinking Events** to the Live Chatbot as it extracts data.
 
 #### Worker 1: Annual Report Processor
 
@@ -298,8 +354,18 @@ All 8 workers fire simultaneously as independent **Celery tasks** via **Redis** 
 | **Extracts** | Current rating + history, upgrade/downgrade trajectory, **watch/outlook signals** (Positive/Stable/Negative/Credit Watch), key risk factors cited by rating agency, specific rating agency language for CAM inclusion |
 | **Analysis** | Downgrade history more important than current rating. Rating agencies use careful language — a "stable outlook" after a downgrade is very different from a "stable outlook" maintained for 3 years. |
 
+#### Worker 9: Factory / Site Visit Notes Processor
+
+| Attribute | Detail |
+|---|---|
+| **Input** | Credit officer's factory/site visit report (PDF or structured form) |
+| **Tech** | Claude Haiku (narrative extraction + structured comparison) |
+| **Extracts** | Plant capacity observed vs stated in AR, worker count observed vs payroll declared, raw material inventory visible vs balance sheet, equipment condition vs depreciation schedule, security/collateral physically sighted and condition noted, management behavior/demeanor observations, discrepancies between site observations and submitted documents |
+| **Cross-references** | Every observed figure is automatically cross-referenced against the corresponding claim in other documents. Example: "Observed 120 workers on factory floor. Payroll in bank statement shows 340 employees. Gap: 220 — possible payroll inflation or ghost employees." |
+| **Output Action** | All discrepancies between site observations and document claims are emitted as FLAGGED ThinkingEvents and fed as discrepancy items into the Evidence Package for scoring. Positive observations ("factory well-maintained, inventory matches BS") feed as supporting evidence. |
+
 #### Additional Input: CIBIL Commercial Report
-Handled as an **input field in the UI** rather than a document worker. When provided, integrated into the Character module scoring. When not available, noted as absent with a confidence reduction applied to the Character score.
+Handled as an **input field in the UI** rather than a document worker. When provided, integrated into the Character module scoring with explicit score impact (see Section 7 — CIBIL Commercial Score metric). When not available, noted as absent with a confidence reduction applied to the Character score.
 
 #### Additional Input: Databricks Connector
 Represented as the data source layer in the architecture. A mock Databricks connector module reads from local files with the same interface as a real Databricks connection. Designed for easy swap to a real Databricks cluster in production.
@@ -935,9 +1001,22 @@ TABLE: rejection_events
   trigger_reasons (JSONB with full evidence),
   full_pipeline_state_snapshot (JSONB),
   rejection_letter_generated (BOOLEAN),
+  rejection_letter_path (VARCHAR),
   reapplication_allowed_after (DATE),
   knowledge_base_entry_id (FK)
 ```
+
+#### Rejection Letter Generation
+
+When the pipeline routes to rejection, a formal rejection letter is auto-generated:
+
+| Attribute | Detail |
+|---|---|
+| **Generator** | Claude Sonnet + python-docx |
+| **Format** | Formal bank letterhead Word document |
+| **Contents** | Formal salutation → Reference (loan application number, date, amount) → **Reasons for rejection** (plain English, specific — each reason references supporting evidence but does NOT disclose exact scores or internal metrics) → Reapplication conditions if permitted (what specifically needs to change, by when) → If fraud detected: standard regulatory language only (no internal detail — legal requirement) → Grievance redressal process and contact → Formal closing |
+| **Stored at** | `rejection_events.rejection_letter_path` |
+| **Also stored in** | Universal Decision Store as assessment output |
 
 #### Fraud Investigation Store
 
@@ -1108,11 +1187,82 @@ Modeled after the CIBIL scoring system used in Indian banking.
 | Module | Max Positive | Max Negative | Key Metrics |
 |---|---|---|---|
 | **Capacity** | +150 pts | -100 pts | DSCR, revenue growth, working capital cycle, cash flow, repayment history |
-| **Character** | +120 pts | -200 pts | Promoter track record, SEBI/RBI history, RPT disclosure, share pledge, management stability |
+| **Character** | +120 pts | -200 pts | Promoter track record, SEBI/RBI history, RPT disclosure, share pledge, management stability, CIBIL commercial score, management credibility score |
 | **Capital** | +80 pts | -80 pts | D/E ratio, net worth, existing obligations, equity contributions |
 | **Collateral** | +60 pts | -40 pts | Coverage ratio, asset quality, lien status, valuation source |
 | **Conditions** | +50 pts | -50 pts | Order book, sector outlook, regulatory environment, PLI/government support |
 | **Compound Insights** | +57 pts | -130 pts | Cascade risk, circular trading, temporal deterioration, positive signals |
+
+### CHARACTER Module — Detailed Metrics
+
+#### Management Credibility Score
+
+The management interview is not just a form — the AI computes a **management_credibility_score (0.0–1.0)** that feeds directly into the CHARACTER module:
+
+**Computation:**
+- Claims made in interview that **match** documents → +confidence
+- Claims made in interview that **contradict** documents → -confidence  
+- Claims that cannot be verified either way → neutral
+
+**Example output:**
+```
+"Management claimed order book ₹280cr → corroborated by BHEL
+ announcement and ET article. (+confidence)"
+"Management claimed no related party suppliers → directly
+ contradicted by MCA21 director overlap. (-confidence)"
+"Management claimed no disputes → contradicted by NJDG case. (-confidence)"
+
+Credibility Score: 0.61 / 1.0
+```
+
+**Score impact (CHARACTER module):**
+
+| Credibility Score | Impact |
+|---|---|
+| 0.80–1.0 | +15 pts |
+| 0.60–0.79 | +5 pts |
+| 0.40–0.59 | -10 pts |
+| 0.20–0.39 | -20 pts |
+| < 0.20 | -25 pts |
+
+#### CIBIL Commercial Score
+
+When the credit officer provides a CIBIL Commercial score at upload, it feeds into the CHARACTER module:
+
+| CIBIL Score | Impact |
+|---|---|
+| 800+ | +30 pts |
+| 700–799 | +15 pts |
+| 600–699 | +5 pts |
+| 500–599 | -10 pts |
+| < 500 | -30 pts |
+| Not provided | 0 pts (confidence reduction flag) |
+
+**When absent:**
+> "CIBIL Commercial score was not provided. Assessment confidence on payment history: REDUCED. If CIBIL is provided and shows score >700, score would improve by up to +15 pts."
+
+### Sector Benchmark Data
+
+Every ratio computation in the scoring model references sector-specific industry benchmarks stored in `config/benchmarks/`.
+
+**Source:** RBI DBIE (Database on Indian Economy) + CMIE Prowess
+
+**Steel Sector Benchmarks (example from `config/benchmarks/steel_sector.json`):**
+
+| Metric | Sector Average | Warning | Critical |
+|---|---|---|---|
+| DSCR | 1.8x | < 1.2x | < 1.0x |
+| D/E Ratio | 1.4x | > 2.5x | > 3.5x |
+| Working Capital Days | 65 days | > 90 days | > 120 days |
+| Revenue CAGR (3yr) | 12% | < 5% | < 0% |
+| Gross Margin | 16–18% | < 12% | < 8% |
+| Current Ratio | 1.4x | < 1.1x | < 0.8x |
+
+**Usage:**
+- Used in every per-point score reasoning paragraph: *"This DSCR of 1.38x is below the sector average of 1.8x"*
+- Updated quarterly from public RBI data
+- Sector auto-detected from Annual Report or manually selected at upload
+- Benchmark files: `steel_sector.json`, `manufacturing.json`, `services.json`
 
 ### Per-Point Breakdown Structure
 
@@ -1622,19 +1772,43 @@ Full assessment record including:
 
 ### Page 7: Officer Notes Panel
 
-**Purpose**: Free-form note-taking by credit officer during assessment review
+**Purpose**: Free-form note-taking by credit officer during assessment review. Available as a persistent side panel on every page.
 
 | Feature | Detail |
 |---|---|
-| Note creation | Free text + timestamp + author |
+| Note creation | Free text field + auto-timestamp + author from JWT |
+| Note context | Each note records which page/section it was made from |
 | Note attachment | Can reference specific thinking event, finding, or ticket |
 | Note categories | Observation / Concern / Follow-up / Override Justification |
-| Persistence | Stored with assessment in PostgreSQL |
+| Persistence | Stored with assessment in PostgreSQL (`assessments` table) |
 | Search | Full-text search across all notes |
+| CAM integration | Notes are visible alongside the CAM in the final output, tagged as "Credit Officer Observations" section |
+| Scope boundary | Notes are clearly labeled as **human annotation, NOT AI data** — they are NOT input into the scoring model |
+
+**Use case:** Officer observed something during a site visit not captured in the structured form, or has contextual knowledge about the promoter from prior interactions. These observations travel with the assessment but remain clearly separated from the AI's analysis.
 
 ---
 
-### Page 8: Flower Worker Monitor (Embedded)
+### Page 8: Analytics Dashboard
+
+**Purpose**: Aggregate analytics across all assessments processed by Intelli-Credit
+
+| Visualization | Detail |
+|---|---|
+| **Score by Sector** | Bar chart — average INTELLI-CREDIT Score by sector (Steel, Manufacturing, Services, etc.) |
+| **Outcome Trends** | Line chart — Approval / Rejection / Fraud rate over time |
+| **Top Score Deductions** | Ranked bar chart — most common score deductions (which risks appear most often across assessments) |
+| **Top Ticket Types** | Ranked list — most common ticket categories raised (Revenue Discrepancy, ITC Mismatch, RPT Concealment, etc.) |
+| **Pipeline Duration** | Bar chart — average pipeline processing time by document count |
+| **Score Distribution** | Histogram — distribution of scores across all assessments |
+| **Fraud Signals** | Ranked table — top fraud signals detected, ranked by frequency |
+| **Knowledge Base Growth** | Line chart — resolved ticket precedents added to ChromaDB over time |
+| **Officer Performance** | Table — tickets resolved per officer, average resolution time |
+| **NPA Correlation** | Scatter plot — which risk flags most accurately predicted actual NPAs (populated when `decision_outcomes` data is available) |
+
+---
+
+### Page 9: Flower Worker Monitor (Embedded)
 
 **Purpose**: Technical monitoring of Celery workers
 
@@ -1670,7 +1844,23 @@ Total pipeline time reduced from estimated 22+ minutes to under 4 minutes:
 - **Chunking strategy**: Documents chunked at 500 tokens with 50-token overlap for optimal RAG retrieval.
 - **Embedding batching**: All chunks embedded in one batch call to local model.
 - **LLM request grouping**: Multiple extractions batched where context window allows.
-- **Streaming CAM generation**: Sections stream to UI as they're generated — user reads Executive Summary while Risk Flags are still being written.
+- **Streaming CAM generation**: Sections stream to UI as they're generated (see streaming order below).
+
+### Streaming CAM Generation Order
+
+The CAM streams to the UI section-by-section so the credit officer can begin reading before the full document is complete:
+
+| Order | Section | Model | Streams at |
+|---|---|---|---|
+| 1st | Executive Summary | Sonnet | ~2:30 into assessment |
+| 2nd–6th | 5 Cs sections (Character, Capacity, Capital, Collateral, Conditions) | Haiku (parallel) | ~3:00 |
+| 7th–8th | Risk Flags + Decision Rationale | Sonnet | ~3:45 |
+
+**User experience:**
+- At **2:30** → Executive Summary readable
+- At **3:00** → All 5 Cs sections complete
+- At **3:45** → Risk Flags and Decision Rationale complete
+- **Total perceived wait before useful content: ~2.5 minutes** (vs ~4 minutes if waiting for entire CAM)
 
 ---
 
@@ -1759,7 +1949,8 @@ intelli-credit/
 │   │   │   ├── legal_notice_worker.py        # Worker 5
 │   │   │   ├── board_minutes_worker.py       # Worker 6
 │   │   │   ├── shareholding_worker.py        # Worker 7
-│   │   │   └── rating_report_worker.py       # Worker 8
+│   │   │   ├── rating_report_worker.py       # Worker 8
+│   │   │   └── site_visit_worker.py          # Worker 9 — Factory/site visit notes
 │   │   ├── consolidator/
 │   │   │   ├── merger.py                     # Schema normalization + conflict detection
 │   │   │   ├── contradiction_detector.py     # Cross-document contradictions

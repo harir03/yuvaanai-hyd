@@ -1,0 +1,2 @@
+# backend/agents/consolidator package
+

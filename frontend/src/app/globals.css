@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --color-maf-teal: #14b8a6;
+  --color-maf-teal-light: #f0fdfa;
+  --color-maf-bg: #f8fafc;
+  --color-maf-card: #ffffff;
+  --color-maf-border: #e2e8f0;
+  --color-maf-text-primary: #1e293b;
+  --color-maf-text-secondary: #64748b;
+  --color-maf-text-muted: #94a3b8;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #1e293b;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer components {
+  .sl-card {
+    @apply bg-maf-card border border-maf-border rounded-lg shadow-sm;
+  }
+
+  .sl-sidebar-item {
+    @apply flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors text-maf-text-secondary hover:bg-slate-50 hover:text-maf-text-primary;
+  }
+
+  .sl-sidebar-item-active {
+    @apply bg-maf-teal text-white hover:bg-maf-teal/90;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Remove Recharts Focus Outline */
+.recharts-wrapper,
+.recharts-surface,
+.recharts-responsive-container {
+  outline: none !important;
+}
+
+*:focus {
+  outline: none !important;
+}
