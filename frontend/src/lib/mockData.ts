@@ -526,3 +526,221 @@ export function getSeverityColor(severity: string): string {
     };
     return colors[severity] ?? "bg-slate-50 text-slate-700";
 }
+
+/* ──────────────────────────────────────────
+   Knowledge Graph Types & Mock Data
+   ────────────────────────────────────────── */
+
+export interface GraphNode {
+    id: string;
+    label: string;
+    type: "Company" | "Director" | "Supplier" | "Customer" | "Bank" | "Auditor" | "RatingAgency" | "Case";
+    properties: Record<string, string>;
+}
+
+export interface GraphEdge {
+    id: string;
+    source: string;
+    target: string;
+    type: string;
+    label: string;
+    properties?: Record<string, string>;
+}
+
+export interface KnowledgeGraphData {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+    stats: {
+        totalNodes: number;
+        totalEdges: number;
+        communities: number;
+        riskPaths: number;
+    };
+}
+
+export const mockKnowledgeGraph: KnowledgeGraphData = {
+    nodes: [
+        { id: "n1", label: "XYZ Steel Pvt Ltd", type: "Company", properties: { cin: "U27100MH2005PTC123456", sector: "Steel Manufacturing", revenue: "₹312.4 Cr" } },
+        { id: "n2", label: "Rajesh Kumar Agarwal", type: "Director", properties: { din: "00123456", designation: "Managing Director", stake: "48.2%" } },
+        { id: "n3", label: "Priya Agarwal", type: "Director", properties: { din: "00789012", designation: "Director", stake: "12.0%", relation: "Spouse" } },
+        { id: "n4", label: "Agarwal Holdings Pvt Ltd", type: "Company", properties: { cin: "U65100MH2010PTC198765", sector: "Holding Company", status: "NPA — Default" } },
+        { id: "n5", label: "State Bank of India", type: "Bank", properties: { branch: "Fort, Mumbai", facility: "₹35 Cr CC + ₹15 Cr TL" } },
+        { id: "n6", label: "MegaSteel Suppliers Ltd", type: "Supplier", properties: { cin: "U28900GJ2003PLC045678", annualSupply: "₹84.5 Cr", creditDays: "120 days" } },
+        { id: "n7", label: "AutoParts India Corp", type: "Customer", properties: { cin: "U34300MH2008PTC087654", annualBusiness: "₹106.2 Cr", receivableDays: "90 days" } },
+        { id: "n8", label: "Deloitte Haskins & Sells", type: "Auditor", properties: { auditYears: "2021–2025", opinion: "Qualified (RPT)" } },
+        { id: "n9", label: "CRISIL", type: "RatingAgency", properties: { currentRating: "A- (Stable)", previousRating: "BBB+ (Watch)" } },
+        { id: "n10", label: "NCLT Mumbai — Case #4521", type: "Case", properties: { claimant: "IndoTrade Finance", amount: "₹4.2 Cr", status: "Pending", filed: "2024-08-15" } },
+        { id: "n11", label: "SteelPlate Exports Ltd", type: "Customer", properties: { cin: "U28100DL2012PTC200111", annualBusiness: "₹42.8 Cr" } },
+        { id: "n12", label: "Vikram Agarwal", type: "Director", properties: { din: "03345678", designation: "Director (Agarwal Holdings)", relation: "Brother" } },
+    ],
+    edges: [
+        { id: "e1", source: "n2", target: "n1", type: "IS_DIRECTOR_OF", label: "Managing Director" },
+        { id: "e2", source: "n3", target: "n1", type: "IS_DIRECTOR_OF", label: "Director" },
+        { id: "e3", source: "n2", target: "n4", type: "IS_DIRECTOR_OF", label: "Director (Cross-holding)" },
+        { id: "e4", source: "n12", target: "n4", type: "IS_DIRECTOR_OF", label: "Managing Director" },
+        { id: "e5", source: "n3", target: "n2", type: "FAMILY_OF", label: "Spouse" },
+        { id: "e6", source: "n12", target: "n2", type: "FAMILY_OF", label: "Brother" },
+        { id: "e7", source: "n6", target: "n1", type: "SUPPLIES_TO", label: "Raw Steel — ₹84.5 Cr/yr" },
+        { id: "e8", source: "n1", target: "n7", type: "SUPPLIES_TO", label: "Processed Steel — ₹106.2 Cr/yr" },
+        { id: "e9", source: "n1", target: "n11", type: "SUPPLIES_TO", label: "Steel Plate — ₹42.8 Cr/yr" },
+        { id: "e10", source: "n5", target: "n1", type: "HAS_FACILITY", label: "₹50 Cr WC" },
+        { id: "e11", source: "n8", target: "n1", type: "IS_AUDITOR_OF", label: "Statutory Auditor" },
+        { id: "e12", source: "n9", target: "n1", type: "HAS_RATING_FROM", label: "A- (Stable)" },
+        { id: "e13", source: "n10", target: "n1", type: "FILED_CASE_AGAINST", label: "₹4.2 Cr — Pending" },
+        { id: "e14", source: "n4", target: "n6", type: "SUPPLIES_TO", label: "₹12.3 Cr (hidden RPT channel)" },
+        { id: "e15", source: "n1", target: "n4", type: "OUTSTANDING_RECEIVABLE", label: "₹6.1 Cr (undisclosed RPT)" },
+    ],
+    stats: { totalNodes: 12, totalEdges: 15, communities: 3, riskPaths: 4 },
+};
+
+/* ──────────────────────────────────────────
+   Score Impact (Before / After ticket resolution)
+   ────────────────────────────────────────── */
+
+export interface ScoreImpact {
+    ticketId: string;
+    ticketTitle: string;
+    modulesAffected: {
+        module: string;
+        metricName: string;
+        scoreBefore: number;
+        scoreAfter: number;
+        delta: number;
+        reason: string;
+    }[];
+    totalBefore: number;
+    totalAfter: number;
+}
+
+export const mockScoreImpacts: Record<string, ScoreImpact> = {
+    "TKT-001": {
+        ticketId: "TKT-001",
+        ticketTitle: "RPT Concealment — ₹6.1Cr Undisclosed",
+        modulesAffected: [
+            { module: "CHARACTER", metricName: "RPT Disclosure Integrity", scoreBefore: -35, scoreAfter: -15, delta: 20, reason: "CFO confirmed ₹6.1Cr classified as investment per AS-18, not RPT. Partial penalty retained for delayed disclosure." },
+            { module: "COMPOUND", metricName: "RPT Pattern Risk", scoreBefore: -15, scoreAfter: -5, delta: 10, reason: "Reclassification reduces concealment severity. Minor pattern concern retained." },
+        ],
+        totalBefore: 647,
+        totalAfter: 677,
+    },
+    "TKT-002": {
+        ticketId: "TKT-002",
+        ticketTitle: "NPA Cascade Risk — Agarwal Holdings Default",
+        modulesAffected: [
+            { module: "COMPOUND", metricName: "Cascade NPA Exposure", scoreBefore: -30, scoreAfter: -30, delta: 0, reason: "NPA exposure confirmed. No change — receivable of ₹6.1Cr remains at risk." },
+        ],
+        totalBefore: 677,
+        totalAfter: 677,
+    },
+    "TKT-003": {
+        ticketId: "TKT-003",
+        ticketTitle: "GST ITC Mismatch — 8.2% Overclaim",
+        modulesAffected: [
+            { module: "CHARACTER", metricName: "Tax Compliance", scoreBefore: -10, scoreAfter: -5, delta: 5, reason: "Supplier filing delays account for 5.1% of gap. Residual 3.1% mismatch is within seasonal tolerance." },
+        ],
+        totalBefore: 677,
+        totalAfter: 682,
+    },
+};
+
+/* ──────────────────────────────────────────
+   Officer Notes Types & Mock Data
+   ────────────────────────────────────────── */
+
+export interface OfficerNote {
+    id: string;
+    author: string;
+    category: "Observation" | "Concern" | "Follow-up" | "Override Justification" | "General";
+    text: string;
+    createdAt: string;
+}
+
+export const mockOfficerNotes: OfficerNote[] = [
+    { id: "note-1", author: "Amit Sharma", category: "Observation", text: "Promoter was forthcoming about Agarwal Holdings default during preliminary call. Suggests willingness to cooperate.", createdAt: "2025-12-18 14:30" },
+    { id: "note-2", author: "Amit Sharma", category: "Concern", text: "RPT reclassification from Board Minutes needs independent CA verification. AS-18 interpretation is borderline.", createdAt: "2025-12-18 15:45" },
+    { id: "note-3", author: "Priya Menon", category: "Follow-up", text: "Schedule site visit to Bhiwandi plant within 2 weeks. Verify claimed 78% capacity utilization.", createdAt: "2025-12-19 09:15" },
+    { id: "note-4", author: "Amit Sharma", category: "Override Justification", text: "Overriding RPT concealment penalty from -35 to -15 based on CFO explanation and AS-18 reclassification letter dated 12-Nov-2025.", createdAt: "2025-12-19 10:00" },
+];
+
+/* ──────────────────────────────────────────
+   Site Visit Types & Mock Data
+   ────────────────────────────────────────── */
+
+export interface SiteVisitData {
+    visitDate: string;
+    visitedBy: string;
+    location: string;
+    plantCondition: "Excellent" | "Good" | "Fair" | "Poor";
+    capacityUtilization: number;
+    inventoryLevel: "Adequate" | "Excess" | "Low" | "Critical";
+    staffCount: number;
+    keyObservations: string[];
+    managementImpressions: string;
+    photographs: string[];
+    overallRating: number;
+}
+
+export const mockSiteVisit: SiteVisitData = {
+    visitDate: "2025-12-15",
+    visitedBy: "Priya Menon, Branch Manager",
+    location: "Plot No. 42, MIDC Bhiwandi, Maharashtra 421302",
+    plantCondition: "Good",
+    capacityUtilization: 78,
+    inventoryLevel: "Adequate",
+    staffCount: 342,
+    keyObservations: [
+        "Plant machinery in good working condition — CNC machines from 2019 (Mazak, Japan)",
+        "Raw material warehouse at ~65% capacity — adequate iron ore and scrap steel inventory",
+        "Quality lab operational with ISO 9001:2015 certification displayed",
+        "Safety equipment visible — helmets, goggles, fire extinguishers. Safety record board: 412 days without LTI",
+        "Order book displayed on production floor — 3 months of confirmed orders from AutoParts India, SteelPlate Exports",
+        "ERP system (SAP B1) running on all terminals — inventory and production tracking digitized",
+        "One blast furnace (#3) shut for maintenance — estimated restart in 2 weeks",
+    ],
+    managementImpressions: "Mr. Rajesh Agarwal was present during the visit and was transparent about the maintenance shutdown. He showed the order pipeline for Q1 2026 which indicates healthy demand. The CFO (Mr. Suresh Nair) demonstrated the ERP-linked financial dashboards. Overall, management appears competent and cooperative.",
+    photographs: ["plant_entrance.jpg", "production_floor.jpg", "raw_material_yard.jpg", "quality_lab.jpg", "order_board.jpg"],
+    overallRating: 7.5,
+};
+
+export function getNodeColor(type: GraphNode["type"]): string {
+    const colors: Record<string, string> = {
+        Company: "bg-teal-500",
+        Director: "bg-indigo-500",
+        Supplier: "bg-amber-500",
+        Customer: "bg-emerald-500",
+        Bank: "bg-blue-500",
+        Auditor: "bg-purple-500",
+        RatingAgency: "bg-cyan-500",
+        Case: "bg-red-500",
+    };
+    return colors[type] ?? "bg-slate-500";
+}
+
+export function getNodeBorderColor(type: GraphNode["type"]): string {
+    const colors: Record<string, string> = {
+        Company: "border-teal-400",
+        Director: "border-indigo-400",
+        Supplier: "border-amber-400",
+        Customer: "border-emerald-400",
+        Bank: "border-blue-400",
+        Auditor: "border-purple-400",
+        RatingAgency: "border-cyan-400",
+        Case: "border-red-400",
+    };
+    return colors[type] ?? "border-slate-400";
+}
+
+export function getEdgeColor(type: string): string {
+    const colors: Record<string, string> = {
+        IS_DIRECTOR_OF: "#6366f1",
+        FAMILY_OF: "#f59e0b",
+        SUPPLIES_TO: "#10b981",
+        HAS_FACILITY: "#3b82f6",
+        IS_AUDITOR_OF: "#a855f7",
+        HAS_RATING_FROM: "#06b6d4",
+        FILED_CASE_AGAINST: "#ef4444",
+        OUTSTANDING_RECEIVABLE: "#f97316",
+        HAS_CHARGE: "#64748b",
+    };
+    return colors[type] ?? "#94a3b8";
+}

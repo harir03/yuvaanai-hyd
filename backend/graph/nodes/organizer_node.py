@@ -133,14 +133,68 @@ async def organizer_node(state: CreditAppraisalState) -> dict:
             events.append(_event(state.session_id, EventType.ACCEPTED,
                                  "Shareholding analysis: no significant concerns"))
 
-        # ── Step 6: ML Suite (stubs — full implementation in later tiers) ──
+        # ── Step 6: ML Suite ──
         ml_signals: Dict[str, Any] = {}
-        # ML signals will be populated when ML models are implemented:
-        # - DOMINANT GNN for circular trading
-        # - Isolation Forest for tabular anomaly
-        # - FinBERT for buried risk in text
         events.append(_event(state.session_id, EventType.COMPUTED,
-                             "ML suite: models not yet active (placeholder)"))
+                             "Running ML suite: Isolation Forest + FinBERT"))
+
+        # 6a. Isolation Forest — tabular anomaly on computed metrics
+        try:
+            metrics_dict = metrics.model_dump() if hasattr(metrics, "model_dump") else {}
+            if_result = iforest.detect_anomalies(metrics_dict)
+            ml_signals["isolation_forest_anomaly"] = if_result.get("is_anomaly", False)
+            ml_signals["isolation_forest_score"] = if_result.get("anomaly_score", 0.0)
+            ml_signals["isolation_forest_detail"] = if_result
+            if if_result.get("is_anomaly"):
+                anom_feats = if_result.get("anomalous_features", [])
+                feat_names = ", ".join(f["feature"] for f in anom_feats[:3])
+                events.append(_event(state.session_id, EventType.FLAGGED,
+                                     f"Isolation Forest: anomaly detected "
+                                     f"(score={if_result['anomaly_score']:.2f}) — {feat_names}"))
+            else:
+                events.append(_event(state.session_id, EventType.ACCEPTED,
+                                     f"Isolation Forest: no anomaly "
+                                     f"(score={if_result.get('anomaly_score', 0):.2f}, "
+                                     f"method={if_result.get('method')})"))
+        except Exception as e:
+            logger.warning(f"[Agent 1.5] Isolation Forest failed: {e}")
+            events.append(_event(state.session_id, EventType.FLAGGED,
+                                 f"Isolation Forest unavailable: {e}"))
+
+        # 6b. FinBERT — buried risk in document text
+        try:
+            doc_texts = {}
+            for wid, wo in worker_outputs.items():
+                ed = wo.extracted_data if hasattr(wo, "extracted_data") else (wo if isinstance(wo, dict) else {})
+                text_content = ed.get("raw_text", "") or ed.get("text", "") or ed.get("notes", "")
+                if text_content and len(str(text_content)) > 50:
+                    doc_texts[wid] = str(text_content)[:2000]
+
+            if doc_texts:
+                fb_result = finbert.analyze_documents(doc_texts)
+                ml_signals["finbert_risk_detected"] = fb_result.get("risk_detected", False)
+                ml_signals["finbert_risk_score"] = fb_result.get("aggregate_risk_score", 0.0)
+                ml_signals["finbert_sentiment"] = fb_result.get("aggregate_sentiment", "neutral")
+                ml_signals["finbert_risk_text"] = ""
+                if fb_result.get("risk_detected"):
+                    top_doc = fb_result.get("highest_risk_document", "")
+                    risk_texts = fb_result.get("risk_texts", [])
+                    snippet = risk_texts[0]["snippet"][:200] if risk_texts else ""
+                    ml_signals["finbert_risk_text"] = snippet
+                    events.append(_event(state.session_id, EventType.FLAGGED,
+                                         f"FinBERT: risk language detected in {top_doc} "
+                                         f"(risk={fb_result['aggregate_risk_score']:.2f})"))
+                else:
+                    events.append(_event(state.session_id, EventType.ACCEPTED,
+                                         f"FinBERT: no buried risk "
+                                         f"(sentiment={fb_result.get('aggregate_sentiment', 'neutral')})"))
+            else:
+                events.append(_event(state.session_id, EventType.COMPUTED,
+                                     "FinBERT: no text content to analyze"))
+        except Exception as e:
+            logger.warning(f"[Agent 1.5] FinBERT failed: {e}")
+            events.append(_event(state.session_id, EventType.FLAGGED,
+                                 f"FinBERT unavailable: {e}"))
 
         # ── Step 7: Assemble OrganizedPackage ──
         # Merge board/shareholding analysis into ml_signals for downstream access

@@ -1109,6 +1109,158 @@ For frontend-only development, mock data is sufficient.
 
 ---
 
-*Last updated: March 6, 2026*
+## 20. Five-Perspective Testing Methodology (MANDATORY)
+
+> **Every feature's tests MUST be designed through 5 expert personas.** Each persona brings domain-specific real-world scenarios that a single developer would miss. This is not optional — it's what separates hackathon demos that break under questioning from ones that survive a panel of judges.
+
+### How to Apply
+
+For **every** test file (`test_tX_Y_*.py`), mentally simulate all 5 personas below. Each persona contributes test scenarios from their expertise. Tests should cover:
+- **Happy path** (normal operation)
+- **Edge cases** (boundary values, empty inputs, missing data)
+- **Real-world attack vectors** (what would break this in production?)
+- **Domain-specific traps** (what would a credit officer / auditor / regulator catch?)
+
+### Persona 1: 🏦 Credit Domain Expert (Indian Banking Specialist)
+
+**Who:** 20-year veteran from SBI's Credit Appraisal division. Has seen every kind of corporate fraud.
+
+**Tests this persona demands:**
+- **Revenue cross-verification accuracy**: AR revenue ≠ GST revenue ≠ ITR revenue — does the system flag the right discrepancy with the right severity?
+- **DSCR boundary precision**: DSCR at exactly 1.0x, 0.99x, 1.01x — hard block triggers at the exact threshold, not off-by-one.
+- **RPT concealment patterns**: Board minutes show 3 RPTs but AR discloses 1 — system must catch the concealment, not just count.
+- **Rating downgrade cascades**: A rating downgrade from A to BBB- during assessment — does temporal analysis catch this?
+- **GSTR-2A vs 3B gap**: ITC claimed (3B) exceeds ITC available (2A) by >10% — must flag as potential tax fraud.
+- **Promoter pledge patterns**: 60% pledge is concerning, but 60% pledge + recent 20% increase is critical — test the delta, not just the absolute.
+- **Sector-specific thresholds**: D/E of 2.5 is fine for infrastructure, dangerous for IT services — test sector-aware benchmarks.
+- **Wilful defaulter edge cases**: Company not on RBI list, but promoter's OTHER company is — test director-level defaulter detection.
+
+**Test naming convention:** `test_credit_*` or `test_domain_*`
+
+### Persona 2: 🔒 Security Architect (OWASP + FinTech Compliance)
+
+**Who:** Application security lead at a payment processor. Thinks in attack vectors.
+
+**Tests this persona demands:**
+- **Injection via document upload**: Filename with `../../../etc/passwd`, PDF with embedded JavaScript, Excel with macros — all must be sanitized.
+- **Session hijacking**: Using session_id from one assessment to access another — must return 403/404, not leak data.
+- **Rate limit bypass**: 1000 rapid-fire requests to `/api/upload` — must throttle, not crash.
+- **Malformed Pydantic payloads**: Extra fields, wrong types, null where required, negative scores, scores > 850 — all must validate and reject cleanly.
+- **WebSocket abuse**: Connecting without valid session, sending garbage frames, opening 100 simultaneous connections — must handle gracefully.
+- **PII in responses**: Score breakdown should NEVER contain raw PAN numbers, Aadhaar, or bank account numbers — test response sanitization.
+- **Path traversal in CAM download**: `GET /api/cam/../../secret/download` — must normalize and reject.
+- **Integer overflow in pagination**: `offset=99999999999` or `limit=-1` — must clamp to valid ranges.
+
+**Test naming convention:** `test_security_*` or `test_validation_*`
+
+### Persona 3: ⚙️ Systems Engineer (Scale + Reliability)
+
+**Who:** SRE at a company processing 10,000 loan applications/day. Obsessed with failure modes.
+
+**Tests this persona demands:**
+- **Concurrent pipeline execution**: 5 assessments running simultaneously — no state leakage between sessions, no race conditions on shared stores.
+- **Database disconnection mid-pipeline**: Neo4j goes down during graph reasoning — pipeline must continue with degraded reasoning + ticket raised, not crash.
+- **Redis connection loss**: Thinking events can't publish — events must queue and replay when connection restores, not silently drop.
+- **Large document handling**: 500-page annual report, 10MB PDF — must not OOM, must process in chunks.
+- **Worker timeout**: Celery worker stuck on OCR for 5 minutes — must timeout, retry, then fail gracefully with partial results.
+- **Memory leak detection**: Process 100 assessments sequentially — memory usage should stay bounded (model instances not duplicated).
+- **Idempotency**: Running the same pipeline twice with same documents — must produce identical scores (deterministic processing).
+- **Graceful shutdown**: SIGTERM during pipeline execution — must checkpoint state, not corrupt data.
+
+**Test naming convention:** `test_reliability_*` or `test_scale_*`
+
+### Persona 4: 🧪 QA Engineer (Edge Cases + Regression)
+
+**Who:** Senior QA with a gift for finding the one input that breaks everything.
+
+**Tests this persona demands:**
+- **Empty document**: Upload a 0-byte PDF — must reject with clear error, not crash in parser.
+- **Missing mandatory documents**: Only 3 of 8 required documents uploaded — must identify which are missing, proceed with available ones at reduced confidence.
+- **All-zero financials**: Revenue = 0, EBITDA = 0, PAT = 0 — scorer must handle division by zero (DSCR = revenue/debt_service), not crash.
+- **Unicode in company names**: "मुंबई स्टील प्राइवेट लिमिटेड" — must process without encoding errors.
+- **Contradictory data**: AR says revenue ₹100cr, ITR says ₹200cr, GST says ₹50cr, Bank says ₹150cr — 4-way mismatch must be flagged and explained, not just averaged.
+- **Boundary score values**: Score at exactly 350 (min), 550 (fair/poor boundary), 650 (good/fair boundary), 750 (excellent/good boundary), 850 (max) — band assignment must be correct at exact boundaries.
+- **Duplicate documents**: Same Annual Report uploaded twice — must detect duplicate, not double-count revenue.
+- **Date edge cases**: Financial year ending March 31 vs December 31 vs June 30 — period alignment must be tested.
+- **Null propagation**: Missing field in one worker output — must not cascade nulls through the entire pipeline.
+
+**Test naming convention:** `test_edge_*` or `test_regression_*`
+
+### Persona 5: 🎯 Hackathon Judge (Demo Impact + Storytelling)
+
+**Who:** VC partner + CTO evaluating hackathon entries. Has 3 minutes of attention. Asks "why should I care?"
+
+**Tests this persona demands:**
+- **End-to-end demo flow**: Upload → processing starts → thinking events stream → score appears → CAM viewable → all in < 30 seconds with mock data.
+- **Thinking event quality**: Events must tell a STORY, not just log operations. "Found revenue discrepancy: AR ₹247cr vs GST ₹198cr (20% gap)" not "Processing GST data...".
+- **Score explainability**: Click any score module → see exactly WHY those points were added/deducted, with source document and page number.
+- **Fraud detection drama**: Circular trading detection must show the graph path (A→B→C→A) with amounts — visual "aha moment".
+- **Hard block impact**: Wilful defaulter found → immediate score cap at 200 → visible red alert in UI → shows exact RBI record.
+- **Cross-verification visualization**: Revenue from 4 sources shown side-by-side with match/mismatch highlighting.
+- **Before/after comparison**: Show score before and after a ticket resolution changes a data point.
+- **Mock data realism**: XYZ Steel ₹50cr Working Capital loan — all mock data must be internally consistent and tell a believable story.
+
+**Test naming convention:** `test_demo_*` or `test_e2e_*`
+
+### Integration into Test Files
+
+Every test file should have tests from **at least 3 of the 5 personas**. The distribution depends on the feature:
+
+| Feature Type | Primary Personas | Secondary Personas |
+|---|---|---|
+| Scoring module | 🏦 Credit Expert, 🧪 QA Engineer | 🎯 Judge |
+| API endpoint | 🔒 Security Architect, 🧪 QA Engineer | ⚙️ Systems Engineer |
+| Agent node | 🏦 Credit Expert, ⚙️ Systems Engineer | 🎯 Judge |
+| ML model | 🧪 QA Engineer, 🏦 Credit Expert | ⚙️ Systems Engineer |
+| Pipeline flow | ⚙️ Systems Engineer, 🎯 Judge | 🧪 QA Engineer |
+| Data layer | ⚙️ Systems Engineer, 🔒 Security Architect | 🧪 QA Engineer |
+| Frontend component | 🎯 Judge, 🧪 QA Engineer | 🔒 Security Architect |
+
+### Test Quality Bar
+
+Before marking any test file complete, verify:
+- [ ] At least 3 personas represented in the test scenarios
+- [ ] Real-world Indian banking values used (₹ crores, DSCR ranges, Indian company names)
+- [ ] Edge cases cover null/empty/zero/negative/overflow/boundary values
+- [ ] Security tests cover injection, traversal, and validation bypass attempts
+- [ ] Demo tests verify the feature tells a compelling story to a non-technical audience
+- [ ] No test relies on external services (all mocked/in-memory)
+- [ ] Every test has a clear assertion — no "test that just doesn't crash"
+
+---
+
+## 21. Frontend Integration Strategy (Backend-First)
+
+> **All backend tiers (T3–T8) are completed BEFORE any frontend integration begins.**
+
+### Why Backend-First
+
+1. **API contract stability**: Frontend wires to APIs that are fully tested and won't change shape.
+2. **No context switching**: Python backend development stays focused without jumping to React/TypeScript.
+3. **Mock data already works**: Every frontend component was built with mock data fallback — the demo works offline regardless.
+4. **Integration is mechanical**: Once the backend API shape is locked, wiring a React component to `fetch()` is straightforward.
+5. **Debugging is isolated**: If a bug appears during integration, the backend is already proven — the bug must be in the wiring.
+
+### Integration Order (T9)
+
+Wire components in **dependency order** — upstream first:
+
+```
+T9.1 Upload → T9.2 Workers → T9.3 Thinking → T9.4 Progress
+    → T9.5 Score → T9.6 Drilldown → T9.7 CAM
+    → T9.8 Tickets → T9.9 History → T9.10 Interview
+    → T9.11 Analytics → T9.12 Flower
+```
+
+Each integration follows this pattern:
+1. Verify the backend endpoint works via `curl` / `httpie` / test.
+2. Add the `fetch()` / `useQuery()` call to the component.
+3. Keep the mock data fallback: `const data = apiData ?? mockData;`
+4. Test both modes: with backend running AND with backend down (mock fallback).
+5. One PR per component integration — never batch.
+
+---
+
+*Last updated: March 8, 2026*
 *Applies to: Intelli-Credit AI-Powered Credit Decisioning Engine*
 *Stack: React 18 + TailwindCSS 3 (frontend) | FastAPI + LangGraph + LangChain + Celery + 4 databases + 3 ML models + 5 scrapers (backend)*

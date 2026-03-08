@@ -21,6 +21,11 @@ from backend.workers.base_worker import BaseDocumentWorker
 from backend.workers.w1_annual_report import AnnualReportWorker
 from backend.workers.w2_bank_statement import BankStatementWorker
 from backend.workers.w3_gst_returns import GSTReturnsWorker
+from backend.workers.w4_itr import ITRWorker
+from backend.workers.w5_legal_notice import LegalNoticeWorker
+from backend.workers.w6_board_minutes import BoardMinutesWorker
+from backend.workers.w7_shareholding import ShareholdingWorker
+from backend.workers.w8_rating_report import RatingReportWorker
 from backend.graph.state import WorkerOutput
 
 logger = logging.getLogger(__name__)
@@ -34,12 +39,11 @@ WORKER_REGISTRY: Dict[DocumentType, Type[BaseDocumentWorker]] = {
     DocumentType.ANNUAL_REPORT: AnnualReportWorker,
     DocumentType.BANK_STATEMENT: BankStatementWorker,
     DocumentType.GST_RETURNS: GSTReturnsWorker,
-    # T1+ workers (not yet implemented):
-    # DocumentType.ITR: ITRWorker,
-    # DocumentType.LEGAL_NOTICE: LegalNoticeWorker,
-    # DocumentType.BOARD_MINUTES: BoardMinutesWorker,
-    # DocumentType.SHAREHOLDING_PATTERN: ShareholdingWorker,
-    # DocumentType.RATING_REPORT: RatingReportWorker,
+    DocumentType.ITR: ITRWorker,
+    DocumentType.LEGAL_NOTICE: LegalNoticeWorker,
+    DocumentType.BOARD_MINUTES: BoardMinutesWorker,
+    DocumentType.SHAREHOLDING_PATTERN: ShareholdingWorker,
+    DocumentType.RATING_REPORT: RatingReportWorker,
 }
 
 

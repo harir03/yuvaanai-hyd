@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     BarChart3,
     TrendingUp,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mockHistory } from "@/lib/mockData";
+import { getAnalytics } from "@/lib/api";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as RePieChart, Pie } from "recharts";
 
 // Derived analytics data
@@ -59,6 +60,29 @@ const processingTimeData = [
 ];
 
 export default function AnalyticsPage() {
+    const [kpi, setKpi] = useState({
+        totalAssessments: "111",
+        approvalRate: "72%",
+        avgScore: "667",
+        avgProcessing: "7m 35s",
+    });
+
+    useEffect(() => {
+        let cancelled = false;
+        getAnalytics()
+            .then((data) => {
+                if (cancelled) return;
+                setKpi({
+                    totalAssessments: String(data.total_assessments),
+                    approvalRate: `${Math.round(data.approval_rate)}%`,
+                    avgScore: String(Math.round(data.average_score)),
+                    avgProcessing: data.average_processing_time || "7m 35s",
+                });
+            })
+            .catch(() => { /* keep defaults */ });
+        return () => { cancelled = true; };
+    }, []);
+
     return (
         <div className="p-6 space-y-6 max-w-[1600px] mx-auto min-h-screen">
             {/* Page Header */}
@@ -74,10 +98,10 @@ export default function AnalyticsPage() {
 
             {/* KPI Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatKPI icon={FileText} label="Total Assessments" value="111" trend="+18% MoM" trendUp={true} />
-                <StatKPI icon={CheckCircle2} label="Approval Rate" value="72%" trend="+3% vs last month" trendUp={true} />
-                <StatKPI icon={Target} label="Average Score" value="667" trend="-8 pts" trendUp={false} />
-                <StatKPI icon={Clock} label="Avg Processing" value="7m 35s" trend="-12% faster" trendUp={true} />
+                <StatKPI icon={FileText} label="Total Assessments" value={kpi.totalAssessments} trend="+18% MoM" trendUp={true} />
+                <StatKPI icon={CheckCircle2} label="Approval Rate" value={kpi.approvalRate} trend="+3% vs last month" trendUp={true} />
+                <StatKPI icon={Target} label="Average Score" value={kpi.avgScore} trend="-8 pts" trendUp={false} />
+                <StatKPI icon={Clock} label="Avg Processing" value={kpi.avgProcessing} trend="-12% faster" trendUp={true} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

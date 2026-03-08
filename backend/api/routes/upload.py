@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, status
 
 from backend.models.schemas import (
     CompanyInfo,
@@ -51,6 +51,7 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "
 
 @router.post("/upload", response_model=AssessmentSummary, status_code=status.HTTP_201_CREATED)
 async def upload_documents(
+    background_tasks: BackgroundTasks,
     company_name: str = Form(...),
     sector: str = Form(...),
     loan_type: str = Form(...),
@@ -64,6 +65,7 @@ async def upload_documents(
     annual_turnover: str = Form(default=""),
     files: List[UploadFile] = File(default=[]),
     document_types: str = Form(default="[]"),
+    auto_run: bool = Form(default=False),
 ):
     """
     Create a new credit assessment session.
@@ -162,9 +164,11 @@ async def upload_documents(
     # Store in memory (will be PostgreSQL later)
     assessments_store[session_id] = assessment
 
-    # TODO: Dispatch Celery workers here (T0.6)
-    # for doc in documents:
-    #     process_document.delay(session_id, doc.id, doc.document_type)
+    # Auto-trigger pipeline if requested
+    if auto_run and documents:
+        from backend.api.routes.pipeline import _execute_pipeline
+        background_tasks.add_task(_execute_pipeline, session_id)
+        logger.info(f"[Upload] Auto-triggered pipeline for {session_id}")
 
     logger.info(f"[Upload] Session {session_id} created with {len(documents)} documents")
     return assessment

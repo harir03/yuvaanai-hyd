@@ -2,7 +2,8 @@
 
 import { Power, ChevronRight, Bell, Wifi, WifiOff } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { isBackendAvailable } from "@/lib/api";
 
 const PAGE_TITLES: Record<string, string> = {
     "/": "Upload Documents",
@@ -18,7 +19,17 @@ const PAGE_TITLES: Record<string, string> = {
 export function Header() {
     const pathname = usePathname();
     const pageTitle = PAGE_TITLES[pathname] ?? "Dashboard";
-    const [wsConnected] = useState(false); // Will be connected to actual WS later
+    const [wsConnected, setWsConnected] = useState(false);
+
+    useEffect(() => {
+        // Check backend health on mount and every 30 seconds
+        const check = () => {
+            isBackendAvailable().then(setWsConnected).catch(() => setWsConnected(false));
+        };
+        check();
+        const interval = setInterval(check, 30_000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <div className="h-16 flex items-center justify-between px-8 bg-white border-b border-slate-100 flex-shrink-0">

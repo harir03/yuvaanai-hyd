@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     Activity,
     Cpu,
@@ -34,6 +35,13 @@ import {
     type PipelineStage,
     type WorkerStatus,
 } from "@/lib/mockData";
+import {
+    connectThinkingWS,
+    getPipelineStatus,
+    getAssessment,
+    type PipelineStatus,
+} from "@/lib/api";
+import { FlowerEmbed } from "@/components/dashboard/FlowerEmbed";
 
 const STAGE_ICONS: Record<string, React.ElementType> = {
     "Document Ingestion": FileText,
@@ -48,24 +56,88 @@ const STAGE_ICONS: Record<string, React.ElementType> = {
 };
 
 export default function ProcessingPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-teal-600" /></div>}>
+            <ProcessingContent />
+        </Suspense>
+    );
+}
+
+function ProcessingContent() {
+    const searchParams = useSearchParams();
+    const sessionId = searchParams.get("session");
+
     const [activeFilter, setActiveFilter] = useState<string>("all");
     const [visibleEvents, setVisibleEvents] = useState<ThinkingEvent[]>([]);
     const [autoScroll, setAutoScroll] = useState(true);
+    const [pipeline, setPipeline] = useState<PipelineStage[]>(mockPipeline);
+    const [workers, setWorkers] = useState<WorkerStatus[]>(mockWorkers);
+    const [companyName, setCompanyName] = useState(mockCompany.name);
+    const [loanInfo, setLoanInfo] = useState(`${mockCompany.loanAmount} ${mockCompany.loanType}`);
+    const [wsConnected, setWsConnected] = useState(false);
     const chatRef = useRef<HTMLDivElement>(null);
+    const wsRef = useRef<WebSocket | null>(null);
 
-    // Simulate live thinking event stream
+    // Connect WebSocket for thinking events when session is available
     useEffect(() => {
-        let index = 0;
-        const interval = setInterval(() => {
-            if (index < mockThinkingEvents.length) {
-                setVisibleEvents((prev) => [...prev, mockThinkingEvents[index]]);
-                index++;
-            } else {
-                clearInterval(interval);
+        if (!sessionId) {
+            // No session — fall back to mock simulation
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index < mockThinkingEvents.length) {
+                    setVisibleEvents((prev) => [...prev, mockThinkingEvents[index]]);
+                    index++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 800);
+            return () => clearInterval(interval);
+        }
+
+        // Real session — connect WebSocket
+        const ws = connectThinkingWS(
+            sessionId,
+            (event) => setVisibleEvents((prev) => [...prev, event]),
+            () => setWsConnected(true),
+            () => setWsConnected(false),
+            () => setWsConnected(false),
+        );
+        wsRef.current = ws;
+
+        return () => {
+            ws.close();
+            wsRef.current = null;
+        };
+    }, [sessionId]);
+
+    // Poll pipeline status when we have a session
+    useEffect(() => {
+        if (!sessionId) return;
+
+        const poll = async () => {
+            try {
+                const status = await getPipelineStatus(sessionId);
+                setPipeline(status.stages);
+            } catch {
+                // Keep mock data on error
             }
-        }, 800);
+        };
+
+        poll();
+        const interval = setInterval(poll, 3000);
         return () => clearInterval(interval);
-    }, []);
+    }, [sessionId]);
+
+    // Fetch assessment company info
+    useEffect(() => {
+        if (!sessionId) return;
+
+        getAssessment(sessionId).then((a) => {
+            setCompanyName(a.company.name);
+            setLoanInfo(`${a.company.loanAmount} ${a.company.loanType}`);
+            setWorkers(a.workers);
+        }).catch(() => {});
+    }, [sessionId]);
 
     // Auto-scroll chatbot
     useEffect(() => {
@@ -79,7 +151,7 @@ export default function ProcessingPage() {
             ? visibleEvents
             : visibleEvents.filter((e) => e.agent.includes(activeFilter));
 
-    const overallProgress = mockPipeline.filter((s) => s.status === "completed").length / mockPipeline.length;
+    const overallProgress = pipeline.filter((s) => s.status === "completed").length / pipeline.length;
 
     const agentFilters = [
         { key: "all", label: "All Agents" },
@@ -102,13 +174,15 @@ export default function ProcessingPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Processing Dashboard</h1>
                         <p className="text-sm text-slate-500">
-                            {mockCompany.name} — {mockCompany.loanAmount} {mockCompany.loanType}
+                            {companyName} — {loanInfo}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-xs font-bold text-emerald-600">LIVE</span>
+                    <div className={cn("h-2.5 w-2.5 rounded-full", wsConnected ? "bg-emerald-400 animate-pulse" : "bg-slate-300")} />
+                    <span className={cn("text-xs font-bold", wsConnected ? "text-emerald-600" : "text-slate-400")}>
+                        {wsConnected ? "LIVE" : sessionId ? "CONNECTING..." : "DEMO"}
+                    </span>
                 </div>
             </div>
 
@@ -136,7 +210,7 @@ export default function ProcessingPage() {
                             Pipeline Stages
                         </h2>
                         <div className="space-y-1">
-                            {mockPipeline.map((stage, i) => {
+                            {pipeline.map((stage, i) => {
                                 const Icon = STAGE_ICONS[stage.name] || Circle;
                                 return (
                                     <div key={stage.name} className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-slate-50 transition-colors">
@@ -178,7 +252,7 @@ export default function ProcessingPage() {
                             Document Workers
                         </h2>
                         <div className="space-y-3">
-                            {mockWorkers.map((worker) => (
+                            {workers.map((worker) => (
                                 <div key={worker.name} className="space-y-1.5">
                                     <div className="flex items-center justify-between">
                                         <span className="text-[11px] font-bold text-slate-700">{worker.name}</span>
@@ -210,6 +284,9 @@ export default function ProcessingPage() {
                             ))}
                         </div>
                     </div>
+
+                    {/* Flower Embed */}
+                    <FlowerEmbed />
                 </div>
 
                 {/* Right Column — Live Thinking Chatbot */}

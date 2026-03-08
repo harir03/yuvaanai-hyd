@@ -2,9 +2,21 @@
 
 from backend.agents.evidence.package_builder import build_evidence_package
 from backend.agents.evidence.ticket_raiser import raise_tickets
+from backend.agents.evidence.compliance_engine import (
+    scan_compliance,
+    ComplianceFlag,
+    ComplianceResult,
+    ComplianceSeverity,
+    ComplianceTrigger,
+)
 
 __all__ = [
     "build_evidence_package",
     "raise_tickets",
+    "scan_compliance",
+    "ComplianceFlag",
+    "ComplianceResult",
+    "ComplianceSeverity",
+    "ComplianceTrigger",
 ]
 

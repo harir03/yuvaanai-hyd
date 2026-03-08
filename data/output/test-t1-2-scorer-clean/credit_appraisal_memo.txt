@@ -1,30 +1,54 @@
 ================================================================================
 CREDIT APPRAISAL MEMO — CONFIDENTIAL
 ================================================================================
-Date: 07 March 2026
+Date: 08 March 2026
 Session: test-t1-2-scorer-clean
 Borrower: XYZ Steel
 
 --------------------------------------------------------------------------------
-EXECUTIVE SUMMARY
+1. EXECUTIVE SUMMARY
 --------------------------------------------------------------------------------
-Credit Score: 395/850 (Very Poor)
+Credit Score: 385/850 (Very Poor)
 Recommendation: REJECTED — Reject
 
 --------------------------------------------------------------------------------
-SCORE BREAKDOWN BY MODULE
+3. KEY FINANCIAL METRICS
+--------------------------------------------------------------------------------
+  Revenue (FY2023):     ₹14,230L
+
+--------------------------------------------------------------------------------
+4. SCORE BREAKDOWN BY MODULE
 --------------------------------------------------------------------------------
   CAPACITY    :   +0 points (range: -100 to +150, 0 metric(s))
   CHARACTER   :  +30 points (range: -200 to +120, 3 metric(s))
   CAPITAL     :   +0 points (range: -80 to +80, 0 metric(s))
-  COLLATERAL  :  +15 points (range: -40 to +60, 1 metric(s))
+  COLLATERAL  :   +5 points (range: -40 to +60, 1 metric(s))
   CONDITIONS  :   +0 points (range: -50 to +50, 0 metric(s))
   COMPOUND    :   +0 points (range: -130 to +57, 0 metric(s))
   BASE        : +350
-  TOTAL       :  395/850
+  TOTAL       :  385/850
 
 --------------------------------------------------------------------------------
-DETAILED METRIC BREAKDOWN
+5. CROSS-VERIFICATION SUMMARY
+--------------------------------------------------------------------------------
+  No cross-verification flags.
+
+--------------------------------------------------------------------------------
+6. RISK FLAGS
+--------------------------------------------------------------------------------
+  ⚠ [CHARACTER] Related Party Transactions: -15
+    3 RPTs totalling ₹1540.0L — moderate level needs monitoring
+
+--------------------------------------------------------------------------------
+7. LOAN TERMS RECOMMENDATION
+--------------------------------------------------------------------------------
+  Sanction:  0% of requested amount
+  Rate:      N/A — Rejected
+  Tenure:    N/A
+  Review:    N/A
+
+--------------------------------------------------------------------------------
+8. DETAILED METRIC BREAKDOWN
 --------------------------------------------------------------------------------
   [CHARACTER] Auditor Qualifications: Clean opinion
     Impact: +30 | Confidence: 92%
@@ -41,10 +65,10 @@ DETAILED METRIC BREAKDOWN
     Source: Bank Statement (p.1)
     Reasoning: Zero cheque bounces demonstrates consistent financial discipline
 
-  [COLLATERAL] Collateral Coverage: Assumed — pending T1 valuation
-    Impact: +15 | Confidence: 50%
+  [COLLATERAL] Collateral Coverage: Data unavailable — default assessment
+    Impact: +5 | Confidence: 40%
     Source: Assessment Default (p.0)
-    Reasoning: Default moderate collateral score — full valuation in T1
+    Reasoning: Shareholding data unavailable; applying conservative default score
 
 ================================================================================
 END OF CREDIT APPRAISAL MEMO

@@ -1,30 +1,56 @@
 ================================================================================
 CREDIT APPRAISAL MEMO — CONFIDENTIAL
 ================================================================================
-Date: 07 March 2026
+Date: 08 March 2026
 Session: test-t1-2-scorer-conceal
 Borrower: XYZ Steel
 
 --------------------------------------------------------------------------------
-EXECUTIVE SUMMARY
+1. EXECUTIVE SUMMARY
 --------------------------------------------------------------------------------
-Credit Score: 350/850 (Very Poor)
-Recommendation: REJECTED — Reject
+Credit Score: 340/850 (Default Risk)
+Recommendation: REJECTED — Permanent reject
 
 --------------------------------------------------------------------------------
-SCORE BREAKDOWN BY MODULE
+3. KEY FINANCIAL METRICS
+--------------------------------------------------------------------------------
+  Revenue (FY2023):     ₹14,230L
+
+--------------------------------------------------------------------------------
+4. SCORE BREAKDOWN BY MODULE
 --------------------------------------------------------------------------------
   CAPACITY    :   +0 points (range: -100 to +150, 0 metric(s))
   CHARACTER   :   -5 points (range: -200 to +120, 4 metric(s))
   CAPITAL     :   +0 points (range: -80 to +80, 0 metric(s))
-  COLLATERAL  :  +15 points (range: -40 to +60, 1 metric(s))
+  COLLATERAL  :   +5 points (range: -40 to +60, 1 metric(s))
   CONDITIONS  :   +0 points (range: -50 to +50, 0 metric(s))
   COMPOUND    :  -10 points (range: -130 to +57, 1 metric(s))
   BASE        : +350
-  TOTAL       :  350/850
+  TOTAL       :  340/850
 
 --------------------------------------------------------------------------------
-DETAILED METRIC BREAKDOWN
+5. CROSS-VERIFICATION SUMMARY
+--------------------------------------------------------------------------------
+  No cross-verification flags.
+
+--------------------------------------------------------------------------------
+6. RISK FLAGS
+--------------------------------------------------------------------------------
+  ⚠ [CHARACTER] Related Party Transactions: -15
+    2 RPTs totalling ₹1200.0L — moderate level needs monitoring
+  ⚠ [CHARACTER] RPT Concealment (BM vs AR): -35
+    Board Minutes record 3 RPT approvals but Annual Report discloses only 2. ₹340.0L in undisclosed RPTs indicates active governance concealment.
+
+--------------------------------------------------------------------------------
+7. LOAN TERMS RECOMMENDATION
+--------------------------------------------------------------------------------
+  Sanction:  0% of requested amount
+  Rate:      N/A — Rejected
+  Tenure:    N/A
+  Review:    N/A
+
+--------------------------------------------------------------------------------
+8. DETAILED METRIC BREAKDOWN
 --------------------------------------------------------------------------------
   [CHARACTER] Auditor Qualifications: Clean opinion
     Impact: +30 | Confidence: 92%
@@ -46,10 +72,10 @@ DETAILED METRIC BREAKDOWN
     Source: Board Minutes vs Annual Report (p.68)
     Reasoning: Board Minutes record 3 RPT approvals but Annual Report discloses only 2. ₹340.0L in undisclosed RPTs indicates active governance concealment.
 
-  [COLLATERAL] Collateral Coverage: Assumed — pending T1 valuation
-    Impact: +15 | Confidence: 50%
+  [COLLATERAL] Collateral Coverage: Data unavailable — default assessment
+    Impact: +5 | Confidence: 40%
     Source: Assessment Default (p.0)
-    Reasoning: Default moderate collateral score — full valuation in T1
+    Reasoning: Shareholding data unavailable; applying conservative default score
 
   [COMPOUND] Data Contradictions: 1 contradiction(s)
     Impact: -10 | Confidence: 75%

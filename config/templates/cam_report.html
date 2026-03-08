@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Credit Appraisal Memo — {{ company_name }}</title></head>
+<body>
+{# ──────────────────────────────────────────────
+   Intelli-Credit — CAM Template (Indian Banking Standard)
+   Renders into HTML consumed by the .docx generator.
+   ────────────────────────────────────────────── #}
+
+<h1>CREDIT APPRAISAL MEMORANDUM</h1>
+<p><strong>Confidential — For Internal Use Only</strong></p>
+
+<table>
+  <tr><td><strong>Company</strong></td><td>{{ company_name }}</td></tr>
+  <tr><td><strong>Sector</strong></td><td>{{ sector }}</td></tr>
+  <tr><td><strong>Facility</strong></td><td>{{ loan_type }}</td></tr>
+  <tr><td><strong>Amount</strong></td><td>{{ loan_amount }}</td></tr>
+  <tr><td><strong>Assessment ID</strong></td><td>{{ session_id }}</td></tr>
+  <tr><td><strong>Date</strong></td><td>{{ date }}</td></tr>
+</table>
+
+<hr>
+
+{# ── Section 1: Executive Summary ── #}
+<h2>1. Executive Summary</h2>
+<p><strong>Credit Score:</strong> {{ score }} / 850
+   (<span style="color: {{ score | score_color }}">{{ score_band }}</span>)</p>
+<p><strong>Recommendation:</strong> {{ outcome }}</p>
+{% if recommendation %}
+<p>{{ recommendation }}</p>
+{% endif %}
+
+{% if hard_blocks %}
+<h3>⚠ Hard Block Triggers</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><th>Trigger</th><th>Score Cap</th><th>Evidence</th><th>Source</th></tr>
+  {% for hb in hard_blocks %}
+  <tr>
+    <td>{{ hb.trigger }}</td>
+    <td>{{ hb.score_cap }}</td>
+    <td>{{ hb.evidence }}</td>
+    <td>{{ hb.source }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{# ── Section 2: Score Breakdown by Module ── #}
+<h2>2. Score Breakdown</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><th>Module</th><th>Score</th><th>Max (+)</th><th>Max (−)</th><th>Metrics</th></tr>
+  {% for mod in modules %}
+  <tr>
+    <td><strong>{{ mod.module }}</strong></td>
+    <td>{{ mod.score }}</td>
+    <td>+{{ mod.max_positive }}</td>
+    <td>{{ mod.max_negative }}</td>
+    <td>{{ mod.metrics | length }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p><strong>Base Score:</strong> {{ base_score }} | <strong>Final Score:</strong> {{ score }}</p>
+
+{# ── Section 3: Detailed Metric Breakdown ── #}
+<h2>3. Detailed Metric Analysis</h2>
+{% for mod in modules %}
+<h3>{{ mod.module }} ({{ mod.score }} pts)</h3>
+<table border="1" cellpadding="4" cellspacing="0" width="100%">
+  <tr>
+    <th>Metric</th><th>Value</th><th>Impact</th>
+    <th>Source</th><th>Confidence</th><th>Reasoning</th>
+  </tr>
+  {% for m in mod.metrics %}
+  <tr>
+    <td>{{ m.metric_name }}</td>
+    <td>{{ m.metric_value }}</td>
+    <td style="color: {{ '#059669' if m.score_impact > 0 else '#dc2626' }}">
+      {{ '+' if m.score_impact > 0 }}{{ m.score_impact }}
+    </td>
+    <td>{{ m.source_document }} p.{{ m.source_page }}</td>
+    <td>{{ "%.0f" | format(m.confidence * 100) }}%</td>
+    <td>{{ m.reasoning }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endfor %}
+
+{# ── Section 4: Loan Terms ── #}
+{% if loan_terms %}
+<h2>4. Recommended Loan Terms</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><td><strong>Sanction %</strong></td><td>{{ loan_terms.sanction_pct }}%</td></tr>
+  <tr><td><strong>Rate</strong></td><td>{{ loan_terms.rate }}</td></tr>
+  <tr><td><strong>Tenure</strong></td><td>{{ loan_terms.tenure }}</td></tr>
+  <tr><td><strong>Review Frequency</strong></td><td>{{ loan_terms.review }}</td></tr>
+</table>
+{% endif %}
+
+{# ── Section 5: Cross-Verification Summary ── #}
+{% if cross_verifications %}
+<h2>5. Cross-Verification Summary</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><th>Check</th><th>Sources</th><th>Result</th><th>Discrepancy</th></tr>
+  {% for cv in cross_verifications %}
+  <tr>
+    <td>{{ cv.check }}</td>
+    <td>{{ cv.sources }}</td>
+    <td>{{ cv.result }}</td>
+    <td>{{ cv.discrepancy }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{# ── Section 6: Risk Flags ── #}
+{% if risk_flags %}
+<h2>6. Risk Flags</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><th>Flag</th><th>Severity</th><th>Impact</th><th>Source</th></tr>
+  {% for rf in risk_flags %}
+  <tr>
+    <td>{{ rf.metric_name }}</td>
+    <td style="color: {{ '#dc2626' if rf.score_impact < -20 else '#d97706' }}">
+      {{ "Critical" if rf.score_impact < -20 else "Warning" }}
+    </td>
+    <td>{{ rf.score_impact }}</td>
+    <td>{{ rf.source_document }} p.{{ rf.source_page }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{# ── Section 7: Tickets ── #}
+{% if tickets %}
+<h2>7. Tickets Raised</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+  <tr><th>Title</th><th>Severity</th><th>Status</th><th>Score Impact</th></tr>
+  {% for t in tickets %}
+  <tr>
+    <td>{{ t.title }}</td>
+    <td>{{ t.severity }}</td>
+    <td>{{ t.status }}</td>
+    <td>{{ t.score_impact }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<hr>
+<p><em>Generated by Intelli-Credit AI Engine | {{ date }}</em></p>
+<p><em>This document is machine-generated and subject to credit officer review.</em></p>
+</body>
+</html>

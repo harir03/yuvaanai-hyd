@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
     Upload,
     FileText,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mockDocuments, type DocumentUpload } from "@/lib/mockData";
+import { uploadDocuments } from "@/lib/api";
 
 const REQUIRED_DOCUMENTS = [
     { type: "Annual Report", label: "Annual Report (3 years)", icon: FileText, required: true },
@@ -29,6 +31,7 @@ const REQUIRED_DOCUMENTS = [
 ];
 
 export default function UploadPage() {
+    const router = useRouter();
     const [companyName, setCompanyName] = useState("");
     const [cin, setCin] = useState("");
     const [loanAmount, setLoanAmount] = useState("");
@@ -37,6 +40,8 @@ export default function UploadPage() {
     const [promoter, setPromoter] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<Record<string, File | null>>({});
     const [isDragging, setIsDragging] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     const handleDrop = useCallback((docType: string, e: React.DragEvent) => {
         e.preventDefault();
@@ -66,9 +71,28 @@ export default function UploadPage() {
     const requiredUploaded = REQUIRED_DOCUMENTS.filter((d) => d.required && uploadedFiles[d.type]).length;
     const canSubmit = companyName && cin && loanAmount && requiredUploaded >= totalRequired;
 
-    const handleStartAssessment = () => {
-        // In production, this would POST to the API and redirect to /processing
-        alert("Assessment started! Redirecting to processing dashboard...\n\nIn production, this uploads documents to the FastAPI backend and triggers the Celery worker pipeline.");
+    const handleStartAssessment = async () => {
+        setIsSubmitting(true);
+        setSubmitError(null);
+        try {
+            const files: Record<string, File> = {};
+            for (const [docType, file] of Object.entries(uploadedFiles)) {
+                if (file) files[docType] = file;
+            }
+            const result = await uploadDocuments({
+                companyName,
+                cin,
+                loanAmount,
+                loanType,
+                sector,
+                promoter,
+                files,
+            });
+            router.push(`/processing?session=${encodeURIComponent(result.sessionId)}`);
+        } catch (err) {
+            setSubmitError(err instanceof Error ? err.message : "Upload failed. Check if backend is running.");
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -186,17 +210,23 @@ export default function UploadPage() {
                                 : "✅ All mandatory documents uploaded"}
                         </p>
 
+                        {submitError && (
+                            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+                                {submitError}
+                            </div>
+                        )}
+
                         <button
                             onClick={handleStartAssessment}
-                            disabled={!canSubmit}
+                            disabled={!canSubmit || isSubmitting}
                             className={cn(
                                 "w-full mt-4 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-bold text-sm transition-all uppercase tracking-wide",
-                                canSubmit
+                                canSubmit && !isSubmitting
                                     ? "bg-teal-500 hover:bg-teal-600 text-white shadow-lg shadow-teal-500/20 active:scale-95"
                                     : "bg-slate-100 text-slate-400 cursor-not-allowed"
                             )}
                         >
-                            Start Assessment <ArrowRight className="w-4 h-4" />
+                            {isSubmitting ? "Uploading..." : "Start Assessment"} <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>

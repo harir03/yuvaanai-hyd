@@ -2161,6 +2161,165 @@ JWT_ALGORITHM=HS256
 
 ---
 
+## 17. Implementation Tier List — Feature Roadmap
+
+> **Strategy:** All backend tiers (T3–T8) are completed first. Frontend integration (T9) happens last — wiring each backend feature to its React component one-by-one. This prevents context-switching between Python and JS, keeps the API contract clean, and ensures every frontend component has a fully-tested backend to connect to.
+
+### Completion Status
+
+| Tier | Name | Features | Tests | Status |
+|------|------|----------|-------|--------|
+| T0 | Foundations | 8/8 | ~80 | ✅ COMPLETE |
+| T1 | Advanced Features | 8/8 | ~120 | ✅ COMPLETE |
+| T2 | Scoring & Output | 5/5 | ~124 | ✅ COMPLETE |
+| T3 | Demo Pipeline | 8 | ~110 | 🔴 IN PROGRESS |
+| T4 | ML Intelligence | 8 | ~80 | ⬜ PLANNED |
+| T5 | External Research | 8 | ~72 | ⬜ PLANNED |
+| T6 | Storage & RAG | 8 | ~74 | ⬜ PLANNED |
+| T7 | LLM Integration | 8 | ~56 | ⬜ PLANNED |
+| T8 | Production Hardening | 8 | ~50 | ⬜ PLANNED |
+| T9 | Frontend Integration | 12 | ~90 | ⬜ PLANNED (LAST) |
+
+---
+
+### 🔴 T3 — Demo Pipeline (Make Backend Run End-to-End)
+
+> **Goal:** A complete backend pipeline that can ingest documents, process through all agents, score, and produce a CAM — testable via API calls alone.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T3.1 | Workers W4–W8 | ITR Worker, Legal Notice Worker, Board Minutes Worker, Shareholding Worker, Rating Report Worker — each with structured mock extraction matching Pydantic schemas | ~25 |
+| T3.2 | Pipeline Trigger | Wire `POST /api/upload` → Celery task dispatch → `run_pipeline()` with real state flow through all LangGraph nodes | ~15 |
+| T3.3 | Decision Store Node | `decision_store_node.py` — persist final assessment to PostgreSQL (in-memory fallback), store score breakdown, CAM, and outcome | ~12 |
+| T3.4 | Sector Benchmarks | JSON benchmark files for 5 sectors (Steel, Textiles, Pharma, IT Services, FMCG) with DSCR, D/E, ICR, revenue growth thresholds | ~10 |
+| T3.5 | Research Node (Basic) | Replace stub `research_node.py` with structured mock research: MCA21, SEBI, RBI defaulter list, NJDG, news sentiment — all with source tiers and confidence scores | ~18 |
+| T3.6 | CAM Download Endpoint | `GET /api/cam/{session_id}/download` — generate Word doc (python-docx) from CAM data, return as file stream | ~10 |
+| T3.7 | Environment Config | `.env.example` with all required env vars, `config/settings.py` with Pydantic BaseSettings, env-driven configuration | ~8 |
+| T3.8 | Docker Compose | `docker-compose.yml` with 10 services (API, worker, Redis, PostgreSQL, Neo4j, ES, ChromaDB, Flower, Nginx, frontend), health checks, volume mounts | ~12 |
+
+---
+
+### 🟡 T4 — ML Intelligence (Real Anomaly Detection)
+
+> **Goal:** Three ML models running locally — Isolation Forest for tabular anomalies, FinBERT for buried financial risk in text, DOMINANT GNN for circular trading in graphs.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T4.1 | Isolation Forest | scikit-learn Isolation Forest on bank statement + financial metrics — detect round-number transactions, irregular patterns, outlier EMI amounts | ~12 |
+| T4.2 | FinBERT Sentiment | ProsusAI/finbert on Annual Report MD&A, auditor qualifications, board minutes risk discussions — flag buried negative language | ~10 |
+| T4.3 | DOMINANT GNN | PyTorch Geometric DOMINANT model on Neo4j subgraph — detect circular trading patterns between supplier/customer/company nodes | ~15 |
+| T4.4 | ML Pipeline Wrapper | Unified `MLAnalysisPipeline` class that runs all 3 models in parallel, combines results into `MLSignals` Pydantic model | ~8 |
+| T4.5 | Anomaly Scoring Integration | Wire ML signals into Compound scoring module — circular trading penalty (-80), buried risk penalty (-25), tabular anomaly penalty (-30) | ~10 |
+| T4.6 | ML Model Registry | Load models once at startup, store in app state, health check endpoints for each model | ~8 |
+| T4.7 | Training Data Generator | Synthetic training data generator for Isolation Forest (normal + anomalous bank patterns) and GNN (normal + circular graphs) | ~8 |
+| T4.8 | ML Confidence Calibration | Confidence scores for each ML prediction, threshold tuning, ensemble agreement scoring | ~9 |
+
+---
+
+### 🟢 T5 — External Research (Real-World Verification)
+
+> **Goal:** 5 Indian government portal scrapers + 3 search APIs producing verified intelligence with source credibility tiers.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T5.1 | MCA21 Scraper | Company master data, director DIN lookup, charge status, filing history — Selenium + BeautifulSoup with retry/timeout/fallback | ~10 |
+| T5.2 | SEBI Scraper | Enforcement actions, debarred entities, insider trading orders — structured extraction with case matching | ~8 |
+| T5.3 | RBI Defaulter Scraper | Wilful defaulter list, fraud accounts, NBFC alerts — PDF table extraction from RBI circulars | ~8 |
+| T5.4 | NJDG Scraper | National Judicial Data Grid — pending cases, disposed cases, case type classification (civil/criminal/NCLT) | ~8 |
+| T5.5 | GST Portal Scraper | GSTIN verification, return filing status, annual aggregate turnover validation | ~8 |
+| T5.6 | Tavily + Exa Integration | AI-native web search (Tavily) + neural semantic search (Exa) for news, analysis, and sector intelligence | ~10 |
+| T5.7 | Source Credibility Engine | 5-tier verification: Government (1.0) → Financial media (0.85) → General news (0.60) → Regional (0.30) → Social (0.0) with automatic tier classification | ~10 |
+| T5.8 | Research Cache Layer | Redis-backed cache (7-day TTL) for scraper results, search results with key namespacing and invalidation | ~10 |
+
+---
+
+### 🔵 T6 — Storage & RAG (Intelligence Layer)
+
+> **Goal:** All 4 databases operational — ChromaDB for vector search, Neo4j for graph intelligence, Elasticsearch for full-text, PostgreSQL for structured records.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T6.1 | ChromaDB Client | Document chunk storage, semantic similarity search, knowledge base CRUD, resolved ticket precedent storage | ~10 |
+| T6.2 | Elasticsearch Client | 4 indices (document_store, research_intelligence, company_profiles, regulatory_watchlist), bulk indexing, hybrid search | ~10 |
+| T6.3 | PostgreSQL Client | SQLAlchemy 2.0 async, 8 tables (assessments, score_breakdown, findings_store, tickets, decision_outcomes, thinking_events, rejection_events, fraud_investigations), migrations | ~12 |
+| T6.4 | Neo4j Client Enhancement | Async driver, bulk node/relationship creation, Cypher query builder, community detection (Louvain via NetworkX) | ~10 |
+| T6.5 | Document Ingestor | Unstructured.io + Tesseract OCR + Camelot + PyMuPDF — parallel page processing, chunk extraction, metadata tagging | ~10 |
+| T6.6 | RAG Pipeline | ChromaDB vector search → context assembly → LLM prompt → cited answer — with source tracing back to document + page | ~8 |
+| T6.7 | Embedding Service | sentence-transformers (all-MiniLM-L6-v2), batch embedding, 384-dim vectors, CPU-optimized, ~20ms/sentence | ~8 |
+| T6.8 | Knowledge Base Seeder | Seed ChromaDB with RBI guidelines, SEBI regulations, Indian banking standards, sector benchmarks for RAG context | ~6 |
+
+---
+
+### 🟣 T7 — LLM Integration (Claude Calls)
+
+> **Goal:** Real Claude API calls replacing mock extractions — Haiku for 80% bulk work, Sonnet for 20% reasoning/writing.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T7.1 | LLM Client Wrapper | Anthropic SDK wrapper with retry, fallback (Haiku ↔ Sonnet), token tracking, cost estimation, LangSmith tracing | ~8 |
+| T7.2 | Extraction Chains | LangChain chains for each document type — structured output parsing with Pydantic models, confidence scoring | ~10 |
+| T7.3 | Prompt Template System | All prompts in `config/prompts/` as Jinja2 templates — extraction, classification, reasoning, CAM writing, executive summary | ~6 |
+| T7.4 | CAM Writer (LLM) | Claude Sonnet-powered CAM generation — executive summary, risk narrative, decision rationale with citation insertion | ~8 |
+| T7.5 | Reasoning Chains | Multi-step reasoning for cross-verification, contradiction resolution, evidence synthesis — chain-of-thought with tracing | ~8 |
+| T7.6 | Classification Agent | Document type auto-classification, entity extraction, sentiment analysis — all via Haiku for speed | ~6 |
+| T7.7 | LLM Cost Monitor | Per-session token tracking, cost breakdown by model tier, budget alerts, usage analytics | ~5 |
+| T7.8 | Fallback Strategy | Haiku timeout → retry → Sonnet fallback → cached response → graceful degradation with ThinkingEvent emission | ~5 |
+
+---
+
+### ⚪ T8 — Production Hardening
+
+> **Goal:** Security, monitoring, observability, and deployment readiness.
+
+| ID | Feature | Description | Tests |
+|----|---------|-------------|-------|
+| T8.1 | JWT Authentication | python-jose JWT auth, login/register endpoints, token refresh, role-based access (officer, senior, admin) | ~8 |
+| T8.2 | Rate Limiting | Redis-backed rate limiter — per-user, per-endpoint, configurable limits, 429 responses | ~6 |
+| T8.3 | WebSocket Authentication | JWT-authenticated WebSocket connections, session validation, connection cleanup on disconnect | ~6 |
+| T8.4 | Structured Logging | JSON logging with component tags, correlation IDs, log levels, ELK-compatible format | ~5 |
+| T8.5 | Health Check Suite | `/health` endpoint checking all 5 services (Redis, PostgreSQL, Neo4j, ES, ChromaDB), readiness vs liveness probes | ~8 |
+| T8.6 | Error Recovery | Global exception handler, circuit breakers for external services, graceful shutdown, worker drain | ~6 |
+| T8.7 | PII Protection | Mask sensitive data in logs, encrypt PII at rest, secure file upload handling, input sanitization | ~6 |
+| T8.8 | CI/CD Pipeline | GitHub Actions — lint, type check, test, build Docker images, deploy staging | ~5 |
+
+---
+
+### 🟠 T9 — Frontend Integration (LAST — After All Backend Tiers)
+
+> **Strategy:** Every React component was built with mock data fallback (T0–T2). Now wire each component to its real backend API one-by-one. Each integration is a single PR with its own tests.
+
+| ID | Feature | Backend Dependency | Frontend Component | Tests |
+|----|---------|-------------------|-------------------|-------|
+| T9.1 | Upload Integration | T3.2 (Pipeline Trigger) | `UploadPortal.jsx` — wire drag-drop to `POST /api/upload`, show real upload progress | ~8 |
+| T9.2 | Worker Status Live | T3.2 (Pipeline Trigger) | `WorkerStatusPanel.jsx` — WebSocket subscription to worker progress events | ~6 |
+| T9.3 | Thinking Chatbot Live | T3.2 + All Agents | `LiveThinkingChatbot.jsx` — WebSocket subscription to Redis Pub/Sub thinking events, color-coded, filterable | ~10 |
+| T9.4 | Progress Tracker Live | T3.2 (Pipeline State) | `ProgressTracker.jsx` — real pipeline stage progression via WebSocket | ~6 |
+| T9.5 | Score Dashboard Live | T2.4 (Score API) | `ScoreDashboard.jsx` — fetch real score from `GET /api/score/{id}`, render gauge + breakdown | ~8 |
+| T9.6 | Score Drilldown Live | T2.4 (Score API) | `ScoreDetailDrilldown.jsx` — per-point evidence with source document links | ~6 |
+| T9.7 | CAM Viewer Live | T3.6 (CAM Download) | `CAMViewer.jsx` — render real CAM with citation highlighting, download button | ~8 |
+| T9.8 | Ticket Resolution Live | T1.7 (Tickets API) | `TicketResolutionInterface.jsx` — real ticket queue, resolve/escalate actions | ~8 |
+| T9.9 | Decision Store Live | T2.5 (Decisions API) | `DecisionStoreViewer.jsx` — paginated history, filters, officer notes | ~8 |
+| T9.10 | Interview Form Live | T3.2 (Pipeline) | `ManagementInterviewForm.jsx` — submit interview → inject into pipeline state | ~6 |
+| T9.11 | Analytics Live | All Backend | `AnalyticsDashboard.jsx` — real metrics from `GET /api/analytics/*` | ~8 |
+| T9.12 | Flower Embed | Docker (Flower) | `FlowerEmbed.jsx` — embed Flower monitoring dashboard via iframe | ~4 |
+
+---
+
+### Hackathon Cutline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  MUST SHIP (Functional Demo):  T3 + T9 (partial: T9.1-T9.5)│
+│  STRONG ENTRY:                 + T4 (ML) + T9.6-T9.9       │
+│  WINNING ENTRY:                + T5 (Research) + T7 (LLM)  │
+│  PRODUCTION READY:             + T6 + T8 + T9.10-T9.12     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Total Estimated:** ~850+ tests across all tiers, ~60+ Python files, ~15 React components wired.
+
+---
+
 ## License
 
 This project is built for the Intelli-Credit Hackathon Challenge.

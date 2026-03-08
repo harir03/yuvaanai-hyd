@@ -19,6 +19,7 @@ from backend.agents.reasoning.hidden_relationship_pass import run_hidden_relatio
 from backend.agents.reasoning.temporal_pass import run_temporal_pass
 from backend.agents.reasoning.positive_signal_pass import run_positive_signal_pass
 from backend.agents.reasoning.insight_store import InsightStore
+from backend.agents.reasoning.graphrag_summarizer import GraphRAGSummarizer
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,22 @@ async def reasoning_node(state: CreditAppraisalState) -> dict:
 
     try:
         await emitter.read("Starting 5 graph reasoning passes over knowledge graph...")
+
+        # Build GraphRAG hierarchical summary for context
+        company_name = state.company.name if state.company else None
+        graphrag = GraphRAGSummarizer()
+        try:
+            graph_summary = await graphrag.build_summary(company_name)
+            graph_context = graph_summary.to_context_window(max_chars=6000)
+            await emitter.read(
+                f"GraphRAG: Built hierarchical summary — {graph_summary.total_nodes} entities, "
+                f"{graph_summary.total_communities} communities"
+            )
+        except Exception as e:
+            logger.warning(f"[Agent 2.5] GraphRAG summary failed: {e}")
+            await emitter.flagged(f"GraphRAG unavailable, using direct graph queries: {e}")
+            graph_summary = None
+            graph_context = ""
 
         # Pass 1: Contradictions
         try:

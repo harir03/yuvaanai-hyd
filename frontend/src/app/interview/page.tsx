@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     Users,
     MessageCircle,
@@ -17,6 +18,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mockCompany } from "@/lib/mockData";
+import { submitInterview } from "@/lib/api";
+import { SiteVisitForm } from "@/components/dashboard/SiteVisitForm";
 
 interface InterviewQuestion {
     id: string;
@@ -79,9 +82,21 @@ const INTERVIEW_SECTIONS: { title: string; icon: React.ElementType; color: strin
 ];
 
 export default function InterviewPage() {
+    return (
+        <Suspense fallback={<div className="p-6 text-slate-400">Loading...</div>}>
+            <InterviewContent />
+        </Suspense>
+    );
+}
+
+function InterviewContent() {
+    const searchParams = useSearchParams();
+    const sessionId = searchParams.get("session");
+
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [currentSection, setCurrentSection] = useState(0);
     const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     const totalQuestions = INTERVIEW_SECTIONS.flatMap((s) => s.questions).length;
     const answeredCount = Object.values(answers).filter((a) => a.trim().length > 0).length;
@@ -90,9 +105,17 @@ export default function InterviewPage() {
         setAnswers((prev) => ({ ...prev, [id]: value }));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        setSubmitting(true);
+        try {
+            if (sessionId) {
+                await submitInterview(sessionId, answers);
+            }
+        } catch {
+            // API unavailable — proceed with local state for demo
+        }
         setSubmitted(true);
-        alert("Management interview submitted! Responses will be incorporated into the Credit Appraisal.\n\nIn production, this POSTs to the API and feeds into Agent 1.5 — The Organizer.");
+        setSubmitting(false);
     };
 
     return (
@@ -211,7 +234,7 @@ export default function InterviewPage() {
                     ) : (
                         <button
                             onClick={handleSubmit}
-                            disabled={submitted || answeredCount === 0}
+                            disabled={submitted || submitting || answeredCount === 0}
                             className={cn(
                                 "flex items-center gap-2 px-6 py-2.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wide",
                                 submitted
@@ -221,6 +244,8 @@ export default function InterviewPage() {
                         >
                             {submitted ? (
                                 <><CheckCircle2 className="w-4 h-4" /> Submitted</>
+                            ) : submitting ? (
+                                <>Submitting...</>
                             ) : (
                                 <><Send className="w-4 h-4" /> Submit Interview</>
                             )}
@@ -228,6 +253,9 @@ export default function InterviewPage() {
                     )}
                 </div>
             </div>
+
+            {/* Site Visit Report */}
+            <SiteVisitForm />
         </div>
     );
 }

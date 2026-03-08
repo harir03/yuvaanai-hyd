@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     AlertTriangle,
     CheckCircle2,
@@ -14,20 +15,55 @@ import {
     Shield,
     User,
     Bot,
+    Loader2,
+    TrendingUp,
+    ArrowRight,
+    BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mockTickets, getSeverityColor, type Ticket } from "@/lib/mockData";
+import { mockTickets, getSeverityColor, mockScoreImpacts, type Ticket, type ScoreImpact } from "@/lib/mockData";
+import { getTickets, resolveTicket as apiResolveTicket } from "@/lib/api";
 
 export default function TicketsPage() {
+    return (
+        <Suspense fallback={<div className="p-6 text-slate-400">Loading...</div>}>
+            <TicketsContent />
+        </Suspense>
+    );
+}
+
+function TicketsContent() {
+    const searchParams = useSearchParams();
+    const sessionId = searchParams.get("session");
+
+    const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(mockTickets[0]);
     const [resolutionInput, setResolutionInput] = useState("");
     const [resolvedTickets, setResolvedTickets] = useState<Set<string>>(new Set());
+    const [resolving, setResolving] = useState(false);
 
-    const handleResolve = (ticketId: string) => {
+    useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+        getTickets(sessionId).then((data) => {
+            if (cancelled) return;
+            setTickets(data);
+            if (data.length > 0) setSelectedTicket(data[0]);
+        });
+        return () => { cancelled = true; };
+    }, [sessionId]);
+
+    const handleResolve = async (ticketId: string) => {
         if (!resolutionInput.trim()) return;
+        setResolving(true);
+        try {
+            await apiResolveTicket(ticketId, resolutionInput);
+        } catch {
+            // API unavailable — resolve locally for demo
+        }
         setResolvedTickets((prev) => new Set([...prev, ticketId]));
         setResolutionInput("");
-        alert(`Ticket ${ticketId} resolved!\n\nIn production, this POSTs to the API, updates the ticket in PostgreSQL, and stores the resolution precedent in ChromaDB for future reference.`);
+        setResolving(false);
     };
 
     return (
@@ -47,19 +83,19 @@ export default function TicketsPage() {
                     <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-red-400" />
                         <span className="text-[11px] font-bold text-slate-500">
-                            {mockTickets.filter((t) => t.severity === "CRITICAL").length} Critical
+                            {tickets.filter((t) => t.severity === "CRITICAL").length} Critical
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-amber-400" />
                         <span className="text-[11px] font-bold text-slate-500">
-                            {mockTickets.filter((t) => t.severity === "HIGH").length} High
+                            {tickets.filter((t) => t.severity === "HIGH").length} High
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-blue-400" />
                         <span className="text-[11px] font-bold text-slate-500">
-                            {mockTickets.filter((t) => t.severity === "LOW").length} Low
+                            {tickets.filter((t) => t.severity === "LOW").length} Low
                         </span>
                     </div>
                 </div>
@@ -71,11 +107,11 @@ export default function TicketsPage() {
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                         <div className="px-5 py-3 border-b border-slate-100">
                             <h2 className="text-sm font-bold text-slate-800">
-                                Open Tickets ({mockTickets.length})
+                                Open Tickets ({tickets.length})
                             </h2>
                         </div>
                         <div className="divide-y divide-slate-50">
-                            {mockTickets.map((ticket) => {
+                            {tickets.map((ticket) => {
                                 const isResolved = resolvedTickets.has(ticket.id);
                                 return (
                                     <button
@@ -176,9 +212,14 @@ export default function TicketsPage() {
                             <div className="px-6 py-4">
                                 <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Officer Resolution</h4>
                                 {resolvedTickets.has(selectedTicket.id) ? (
-                                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-4">
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                        <span className="text-sm font-medium text-emerald-800">Ticket resolved — precedent stored for future reference</span>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-4">
+                                            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                            <span className="text-sm font-medium text-emerald-800">Ticket resolved — precedent stored for future reference</span>
+                                        </div>
+
+                                        {/* Score Impact Panel */}
+                                        <ScoreImpactPanel ticketId={selectedTicket.id} />
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -192,7 +233,7 @@ export default function TicketsPage() {
                                         <div className="flex items-center gap-3">
                                             <button
                                                 onClick={() => handleResolve(selectedTicket.id)}
-                                                disabled={!resolutionInput.trim()}
+                                                disabled={!resolutionInput.trim() || resolving}
                                                 className={cn(
                                                     "flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold transition-all",
                                                     resolutionInput.trim()
@@ -218,6 +259,77 @@ export default function TicketsPage() {
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+    );
+}
+
+/* ─── Score Impact Panel (Before / After Resolution) ─── */
+
+function ScoreImpactPanel({ ticketId }: { ticketId: string }) {
+    const impact = mockScoreImpacts[ticketId];
+    if (!impact) return null;
+
+    const totalDelta = impact.totalAfter - impact.totalBefore;
+
+    return (
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="w-4 h-4 text-indigo-500" />
+                <h5 className="text-xs font-black text-slate-700 uppercase tracking-wider">Score Impact Analysis</h5>
+            </div>
+
+            {/* Overall Before → After */}
+            <div className="flex items-center justify-center gap-6 mb-5 py-3 bg-white rounded-lg border border-slate-100">
+                <div className="text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Before</p>
+                    <p className="text-2xl font-black text-slate-800">{impact.totalBefore}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <ArrowRight className="w-5 h-5 text-slate-300" />
+                    <span className={cn(
+                        "text-sm font-black px-2.5 py-1 rounded-full",
+                        totalDelta > 0 ? "bg-emerald-50 text-emerald-600" :
+                        totalDelta < 0 ? "bg-red-50 text-red-500" :
+                        "bg-slate-50 text-slate-500"
+                    )}>
+                        {totalDelta > 0 ? "+" : ""}{totalDelta}
+                    </span>
+                </div>
+                <div className="text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">After</p>
+                    <p className="text-2xl font-black text-teal-600">{impact.totalAfter}</p>
+                </div>
+            </div>
+
+            {/* Per-module breakdown */}
+            <div className="space-y-2">
+                {impact.modulesAffected.map((m, i) => (
+                    <div key={i} className="bg-white rounded-lg border border-slate-100 p-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded uppercase">
+                                    {m.module}
+                                </span>
+                                <span className="text-[11px] font-bold text-slate-700">{m.metricName}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px]">
+                                <span className="text-slate-400 font-mono">{m.scoreBefore}</span>
+                                <ArrowRight className="w-3 h-3 text-slate-300" />
+                                <span className="text-slate-700 font-mono font-bold">{m.scoreAfter}</span>
+                                {m.delta !== 0 && (
+                                    <span className={cn(
+                                        "font-black text-[10px] px-1.5 py-0.5 rounded",
+                                        m.delta > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
+                                    )}>
+                                        {m.delta > 0 ? "+" : ""}{m.delta}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed">{m.reason}</p>
+                    </div>
+                ))}
             </div>
         </div>
     );

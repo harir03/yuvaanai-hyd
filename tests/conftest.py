@@ -6,6 +6,13 @@ import pytest
 BASE = "http://localhost:8001"
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset rate limiter state before each test to prevent cross-test 429 errors."""
+    from backend.api.middleware.rate_limiter import reset_rate_limiter
+    reset_rate_limiter()
+
+
 @pytest.fixture(scope="session")
 def session_id():
     """Create a test assessment via upload and return the session_id.

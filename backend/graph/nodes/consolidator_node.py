@@ -168,11 +168,11 @@ async def consolidator_node(state: CreditAppraisalState) -> dict:
                     confidence=revenue_sources["GST_RETURNS"].confidence,
                 )
 
-        # W4 — ITR revenue (not yet implemented, but slot ready)
+        # W4 — ITR revenue
         w4_data = _get_extracted_data(outputs, "W4")
         if w4_data and "revenue_from_itr" in w4_data:
             itr_rev = w4_data["revenue_from_itr"]
-            val = itr_rev.get("total_income")
+            val = itr_rev.get("turnover")
             if val is not None:
                 revenue_sources["ITR"] = NormalizedField(
                     value=float(val),

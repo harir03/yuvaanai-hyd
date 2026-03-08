@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     BarChart3,
     TrendingUp,
@@ -17,6 +18,7 @@ import {
     ExternalLink,
     Minus,
     Shield,
+    Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -27,20 +29,97 @@ import {
     getScoreBandColor,
     getScoreBandBg,
     type ScoreModule,
+    type CAMSection,
 } from "@/lib/mockData";
+import { getScore, getAssessment, type ScoreResult } from "@/lib/api";
+import { KnowledgeGraph } from "@/components/dashboard/KnowledgeGraph";
 
 export default function ResultsPage() {
-    const [activeTab, setActiveTab] = useState<"score" | "cam">("score");
+    return (
+        <Suspense fallback={<div className="p-6 text-slate-400">Loading...</div>}>
+            <ResultsContent />
+        </Suspense>
+    );
+}
+
+function ResultsContent() {
+    const searchParams = useSearchParams();
+    const sessionId = searchParams.get("session");
+
+    const [activeTab, setActiveTab] = useState<"score" | "cam" | "graph">("score");
     const [expandedModule, setExpandedModule] = useState<string | null>("CAPACITY");
     const [expandedCAM, setExpandedCAM] = useState<string | null>(null);
+    const [loading, setLoading] = useState(!!sessionId);
 
-    const totalScore = mockAssessment.finalScore;
-    const band = mockAssessment.scoreBand;
+    // Score data (from API or mock)
+    const [scoreData, setScoreData] = useState<ScoreResult | null>(null);
+    const [companyName, setCompanyName] = useState(mockCompany.name);
+    const [sessionLabel, setSessionLabel] = useState(mockAssessment.sessionId);
+    const [assessmentMeta, setAssessmentMeta] = useState({
+        recommendation: mockAssessment.recommendation,
+        approvedAmount: mockAssessment.approvedAmount,
+        interestRate: mockAssessment.interestRate,
+        processingTime: mockAssessment.processingTime,
+        documentsAnalyzed: mockAssessment.documentsAnalyzed,
+        findingsCount: mockAssessment.findingsCount,
+        ticketsRaised: mockAssessment.ticketsRaised,
+        ticketsResolved: mockAssessment.ticketsResolved,
+    });
+    const [camSections, setCamSections] = useState<CAMSection[]>(mockCAM);
+    const [modules, setModules] = useState<ScoreModule[]>(mockScoreModules);
+
+    useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+
+        async function loadData() {
+            try {
+                const [score, assessment] = await Promise.all([
+                    getScore(sessionId!),
+                    getAssessment(sessionId!),
+                ]);
+                if (cancelled) return;
+
+                setScoreData(score);
+                setCompanyName(score.companyName || assessment.company.name);
+                setSessionLabel(sessionId!);
+                setModules(score.modules.length > 0 ? score.modules : mockScoreModules);
+                setAssessmentMeta({
+                    recommendation: score.recommendation || mockAssessment.recommendation,
+                    approvedAmount: `${score.loanTerms.sanctionPct}% of requested`,
+                    interestRate: score.loanTerms.rate || mockAssessment.interestRate,
+                    processingTime: assessment.processingTime || mockAssessment.processingTime,
+                    documentsAnalyzed: assessment.documentsAnalyzed || mockAssessment.documentsAnalyzed,
+                    findingsCount: assessment.findingsCount || mockAssessment.findingsCount,
+                    ticketsRaised: assessment.ticketsRaised || mockAssessment.ticketsRaised,
+                    ticketsResolved: assessment.ticketsResolved || mockAssessment.ticketsResolved,
+                });
+                // CAM sections stay mock unless we parse from API
+            } catch {
+                // Fallback to mock data — already set as defaults
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        loadData();
+        return () => { cancelled = true; };
+    }, [sessionId]);
+
+    const totalScore = scoreData?.score ?? mockAssessment.finalScore;
+    const band = scoreData?.scoreBand ?? mockAssessment.scoreBand;
     const maxScore = 850;
     const scorePercent = (totalScore / maxScore) * 100;
 
     return (
         <div className="p-6 space-y-6 max-w-[1600px] mx-auto min-h-screen">
+            {loading && (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
+                    <span className="ml-3 text-sm text-slate-500">Loading results...</span>
+                </div>
+            )}
+
             {/* Page Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -50,7 +129,7 @@ export default function ResultsPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Assessment Results</h1>
                         <p className="text-sm text-slate-500">
-                            {mockCompany.name} — Session {mockAssessment.sessionId.slice(0, 8)}
+                            {companyName} — Session {sessionLabel.slice(0, 8)}
                         </p>
                     </div>
                 </div>
@@ -69,6 +148,7 @@ export default function ResultsPage() {
                 {[
                     { key: "score" as const, label: "SCORE DASHBOARD" },
                     { key: "cam" as const, label: "CREDIT APPRAISAL MEMO" },
+                    { key: "graph" as const, label: "KNOWLEDGE GRAPH" },
                 ].map((tab) => (
                     <button
                         key={tab.key}
@@ -93,9 +173,13 @@ export default function ResultsPage() {
                     band={band}
                     expandedModule={expandedModule}
                     setExpandedModule={setExpandedModule}
+                    modules={modules}
+                    meta={assessmentMeta}
                 />
+            ) : activeTab === "cam" ? (
+                <CAMViewer expandedCAM={expandedCAM} setExpandedCAM={setExpandedCAM} camSections={camSections} />
             ) : (
-                <CAMViewer expandedCAM={expandedCAM} setExpandedCAM={setExpandedCAM} />
+                <KnowledgeGraph />
             )}
         </div>
     );
@@ -103,10 +187,12 @@ export default function ResultsPage() {
 
 /* ─── Score Dashboard ────────────────────────────────────────── */
 function ScoreDashboard({
-    totalScore, maxScore, scorePercent, band, expandedModule, setExpandedModule,
+    totalScore, maxScore, scorePercent, band, expandedModule, setExpandedModule, modules, meta,
 }: {
     totalScore: number; maxScore: number; scorePercent: number; band: string;
     expandedModule: string | null; setExpandedModule: (m: string | null) => void;
+    modules: ScoreModule[];
+    meta: { recommendation: string; approvedAmount: string; interestRate: string; processingTime: string; documentsAnalyzed: number; findingsCount: number; ticketsRaised: number; ticketsResolved: number };
 }) {
     return (
         <div className="space-y-6">
@@ -138,33 +224,33 @@ function ScoreDashboard({
                 <div className="md:col-span-3 grid grid-cols-3 gap-4">
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Recommendation</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.recommendation}</p>
-                        <p className="text-xs text-slate-400 mt-1">{mockAssessment.approvedAmount}</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.recommendation}</p>
+                        <p className="text-xs text-slate-400 mt-1">{meta.approvedAmount}</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Interest Rate</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.interestRate}</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.interestRate}</p>
                         <p className="text-xs text-slate-400 mt-1">Based on score band</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Processing Time</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.processingTime}</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.processingTime}</p>
                         <p className="text-xs text-slate-400 mt-1">End-to-end pipeline</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Documents Analyzed</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.documentsAnalyzed}</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.documentsAnalyzed}</p>
                         <p className="text-xs text-slate-400 mt-1">Across 8 types</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Findings</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.findingsCount}</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.findingsCount}</p>
                         <p className="text-xs text-slate-400 mt-1">Cross-verified facts</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Tickets Raised</p>
-                        <p className="text-lg font-bold text-slate-800">{mockAssessment.ticketsRaised}</p>
-                        <p className="text-xs text-slate-400 mt-1">{mockAssessment.ticketsResolved} resolved</p>
+                        <p className="text-lg font-bold text-slate-800">{meta.ticketsRaised}</p>
+                        <p className="text-xs text-slate-400 mt-1">{meta.ticketsResolved} resolved</p>
                     </div>
                 </div>
             </div>
@@ -176,7 +262,7 @@ function ScoreDashboard({
                     Score Breakdown — 5 Cs + Compound
                 </h2>
                 <div className="space-y-2">
-                    {mockScoreModules.map((mod) => {
+                    {modules.map((mod) => {
                         const isExpanded = expandedModule === mod.name;
                         const isPositive = mod.score >= 0;
                         const positivePoints = mod.metrics.filter(m => m.scoreImpact > 0).reduce((sum, m) => sum + m.scoreImpact, 0);
@@ -261,9 +347,10 @@ function ScoreDashboard({
 
 /* ─── CAM Viewer ─────────────────────────────────────────────── */
 function CAMViewer({
-    expandedCAM, setExpandedCAM,
+    expandedCAM, setExpandedCAM, camSections,
 }: {
     expandedCAM: string | null; setExpandedCAM: (s: string | null) => void;
+    camSections: CAMSection[];
 }) {
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100">
@@ -283,7 +370,7 @@ function CAMViewer({
 
             {/* CAM Sections */}
             <div className="divide-y divide-slate-100">
-                {mockCAM.map((section) => {
+                {camSections.map((section) => {
                     const isExpanded = expandedCAM === section.title;
                     return (
                         <div key={section.title}>

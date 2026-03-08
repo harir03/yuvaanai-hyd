@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Archive,
     Search,
@@ -19,14 +19,26 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mockHistory, getScoreBandColor, getScoreBandBg, type HistoryRecord } from "@/lib/mockData";
+import { getDecisions } from "@/lib/api";
+import { OfficerNotesPanel } from "@/components/dashboard/OfficerNotesPanel";
 
 export default function HistoryPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [bandFilter, setBandFilter] = useState("all");
     const [statusFilter, setStatusFilter] = useState("all");
     const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
+    const [records, setRecords] = useState<HistoryRecord[]>(mockHistory);
 
-    const filtered = mockHistory.filter((r) => {
+    useEffect(() => {
+        let cancelled = false;
+        getDecisions().then((data) => {
+            if (cancelled) return;
+            if (data.length > 0) setRecords(data);
+        });
+        return () => { cancelled = true; };
+    }, []);
+
+    const filtered = records.filter((r) => {
         if (searchQuery && !r.companyName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         if (bandFilter !== "all" && r.scoreBand !== bandFilter) return false;
         if (statusFilter !== "all" && r.status !== statusFilter) return false;
@@ -57,7 +69,7 @@ export default function HistoryPage() {
                     </div>
                 </div>
                 <span className="text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg">
-                    {mockHistory.length} assessments
+                    {records.length} assessments
                 </span>
             </div>
 
@@ -170,6 +182,9 @@ export default function HistoryPage() {
                     </div>
                 )}
             </div>
+
+            {/* Officer Notes */}
+            <OfficerNotesPanel />
 
             {/* Detail Modal */}
             {selectedRecord && (

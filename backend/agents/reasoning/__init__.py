@@ -7,6 +7,7 @@ from backend.agents.reasoning.hidden_relationship_pass import run_hidden_relatio
 from backend.agents.reasoning.temporal_pass import run_temporal_pass
 from backend.agents.reasoning.positive_signal_pass import run_positive_signal_pass
 from backend.agents.reasoning.insight_store import InsightStore
+from backend.agents.reasoning.graphrag_summarizer import GraphRAGSummarizer
 
 __all__ = [
     "run_contradiction_pass",
@@ -15,5 +16,6 @@ __all__ = [
     "run_temporal_pass",
     "run_positive_signal_pass",
     "InsightStore",
+    "GraphRAGSummarizer",
 ]
 

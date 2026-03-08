@@ -1,0 +1,237 @@
+# ──────────────────────────────────────────────
+# Intelli-Credit — Docker Compose (10 services)
+# ──────────────────────────────────────────────
+# Usage:
+#   docker compose up -d          # start all services
+#   docker compose logs -f api    # tail API logs
+#   docker compose down           # stop everything
+#   docker compose ps             # check service status
+#
+# Health: http://localhost/health  (via nginx)
+# API Docs: http://localhost/api/docs
+# Flower:   http://localhost:5555
+# Neo4j:    http://localhost:7474
+
+version: "3.9"
+
+networks:
+  ic-network:
+    driver: bridge
+
+services:
+
+  # ── Infrastructure ──
+
+  redis:
+    image: redis:7-alpine
+    container_name: ic-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ic-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    mem_limit: 256m
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: ic-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-intellicredit}
+      POSTGRES_USER: ${POSTGRES_USER:-intellicredit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intellicredit}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 512m
+
+  neo4j:
+    image: neo4j:5.14-community
+    container_name: ic-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - ic-network
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-changeme}", "RETURN 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1g
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    container_name: ic-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=intelli-credit
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - ic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1g
+
+  chromadb:
+    image: chromadb/chroma:0.5.0
+    container_name: ic-chromadb
+    restart: unless-stopped
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - ic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    mem_limit: 512m
+
+  # ── Application ──
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ic-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Override hosts to use docker service names
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      NEO4J_URI: bolt://neo4j:7687
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      CHROMADB_HOST: chromadb
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    volumes:
+      - ./data/output:/app/data/output
+      - upload_data:/app/data/uploads
+    networks:
+      - ic-network
+    mem_limit: 2g
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379/0
+      NEO4J_URI: bolt://neo4j:7687
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      CHROMADB_HOST: chromadb
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ic-network
+    deploy:
+      replicas: 2
+    mem_limit: 2g
+
+  flower:
+    image: mher/flower:2.0.1
+    container_name: ic-flower
+    restart: unless-stopped
+    command: celery --broker=redis://redis:${REDIS_PORT:-6379}/${REDIS_DB:-0} flower --port=5555 --broker_api=redis://redis:${REDIS_PORT:-6379}/${REDIS_DB:-0}
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ic-network
+    mem_limit: 256m
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ic-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://nginx/api
+    networks:
+      - ic-network
+    mem_limit: 512m
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ic-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - frontend
+      - flower
+    networks:
+      - ic-network
+    mem_limit: 128m
+
+volumes:
+  redis_data:
+  postgres_data:
+  neo4j_data:
+  es_data:
+  chroma_data:
+  upload_data:

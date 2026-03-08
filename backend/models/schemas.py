@@ -216,6 +216,39 @@ class ScoreModuleSummary(BaseModel):
     metrics: List[ScoreBreakdownEntry] = Field(default_factory=list)
 
 
+class LoanTerms(BaseModel):
+    """Recommended loan terms derived from score band."""
+    sanction_pct: int = Field(..., description="Percentage of requested amount")
+    rate: str = Field(..., description="Interest rate recommendation")
+    tenure: str = Field(..., description="Maximum tenure")
+    review: str = Field(..., description="Review frequency")
+
+
+class HardBlockResponse(BaseModel):
+    """Hard block trigger in API response."""
+    trigger: str
+    score_cap: int
+    evidence: str
+    source: str
+
+
+class ScoreResponse(BaseModel):
+    """Dedicated score detail response."""
+    session_id: str
+    company_name: str
+    score: int = Field(..., ge=0, le=850)
+    score_band: ScoreBand
+    outcome: AssessmentOutcome
+    recommendation: str
+    base_score: int = 350
+    modules: List[ScoreModuleSummary] = Field(default_factory=list)
+    hard_blocks: List[HardBlockResponse] = Field(default_factory=list)
+    loan_terms: Optional[LoanTerms] = None
+    cam_url: Optional[str] = None
+    total_metrics: int = 0
+    scored_at: Optional[datetime] = None
+
+
 class Ticket(BaseModel):
     """A conflict/issue requiring human review."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -261,7 +294,9 @@ class AssessmentSummary(BaseModel):
     tickets_raised: int = 0
     tickets_resolved: int = 0
     cam_url: Optional[str] = None
+    cam_path: Optional[str] = None
     langsmith_trace_url: Optional[str] = None
+    error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
@@ -279,6 +314,64 @@ class HistoryRecord(BaseModel):
     officer: str = Field(default="System")
     processing_time: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NoteCategory(str, Enum):
+    """Category for officer notes."""
+    OBSERVATION = "Observation"
+    CONCERN = "Concern"
+    FOLLOW_UP = "Follow-up"
+    OVERRIDE_JUSTIFICATION = "Override Justification"
+    GENERAL = "General"
+
+
+class OfficerNote(BaseModel):
+    """A note added by a credit officer, optionally linked to a finding or ticket."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    text: str
+    author: str = Field(default="Credit Officer")
+    category: NoteCategory = Field(default=NoteCategory.GENERAL)
+    finding_id: Optional[str] = Field(default=None, description="Linked finding ID")
+    ticket_id: Optional[str] = Field(default=None, description="Linked ticket ID")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AddNoteRequest(BaseModel):
+    """Request to add an officer note."""
+    text: str = Field(..., min_length=1, max_length=5000)
+    author: str = Field(default="Credit Officer")
+    category: NoteCategory = Field(default=NoteCategory.GENERAL)
+    finding_id: Optional[str] = None
+    ticket_id: Optional[str] = None
+
+
+class InterviewSubmission(BaseModel):
+    """Management interview answers submitted by the credit officer."""
+    answers: Dict[str, str] = Field(..., description="Question ID → answer text")
+
+
+class DecisionRecord(BaseModel):
+    """Full decision record for the Decision Store viewer."""
+    session_id: str
+    company_name: str
+    sector: str
+    loan_type: str
+    loan_amount: str
+    score: Optional[int] = None
+    score_band: Optional[ScoreBand] = None
+    outcome: AssessmentOutcome
+    modules: List[ScoreModuleSummary] = Field(default_factory=list)
+    hard_blocks: List[HardBlockResponse] = Field(default_factory=list)
+    loan_terms: Optional[LoanTerms] = None
+    cam_url: Optional[str] = None
+    documents_analyzed: int = 0
+    findings_count: int = 0
+    tickets_raised: int = 0
+    tickets_resolved: int = 0
+    officer_notes: List[OfficerNote] = Field(default_factory=list)
+    processing_time: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
 
 
 class AnalyticsData(BaseModel):

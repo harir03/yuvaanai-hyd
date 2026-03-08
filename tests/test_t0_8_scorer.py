@@ -306,8 +306,8 @@ async def test_collateral_default():
 
     assert len(entries) == 1
     assert entries[0].module == ScoreModule.COLLATERAL
-    assert entries[0].score_impact == 15  # T0 default
-    assert entries[0].confidence == 0.50  # Low confidence for default
+    assert entries[0].score_impact == 5  # Default when no W7 data
+    assert entries[0].confidence == 0.40  # Low confidence for default
 
 
 # ──────────────────────────────────────────────
