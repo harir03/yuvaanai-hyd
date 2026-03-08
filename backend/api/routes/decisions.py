@@ -9,8 +9,9 @@ POST  /api/decisions/{session_id}/notes  — Add officer note
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from backend.api.auth.jwt_handler import optional_auth
 from backend.models.schemas import (
     AddNoteRequest,
     AssessmentOutcome,
@@ -26,7 +27,7 @@ from backend.api.routes._store import assessments_store, officer_notes_store
 from backend.graph.nodes.recommendation_node import _get_loan_terms
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["decisions"])
+router = APIRouter(prefix="/api", tags=["decisions"], dependencies=[Depends(optional_auth)])
 
 
 def _to_decision_record(session_id: str) -> DecisionRecord:

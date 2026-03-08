@@ -12,8 +12,9 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks, status
 
+from backend.api.auth.jwt_handler import optional_auth
 from backend.models.schemas import (
     CompanyInfo,
     DocumentMeta,
@@ -28,7 +29,7 @@ from backend.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["upload"])
+router = APIRouter(prefix="/api", tags=["upload"], dependencies=[Depends(optional_auth)])
 
 # In-memory store for hackathon (replaced by PostgreSQL in T0.4)
 # Shared with other route modules via import
@@ -47,6 +48,68 @@ DOCUMENT_TYPE_MAP = {
 }
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "uploads")
+
+# ── File upload validation constants ──
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB per file
+MAX_TOTAL_SIZE = 200 * 1024 * 1024  # 200 MB total per upload
+MAX_FILES = 20
+
+ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv", ".doc", ".docx", ".txt"}
+
+# Magic bytes for file type verification
+MAGIC_BYTES = {
+    b"%PDF": ".pdf",
+    b"PK\x03\x04": ".xlsx",         # ZIP-based (xlsx, docx)
+    b"\xd0\xcf\x11\xe0": ".xls",    # OLE2 (xls, doc)
+    b"\xef\xbb\xbf": ".csv",        # UTF-8 BOM (optional for CSV)
+}
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal and special character injection."""
+    # Strip path components  
+    name = os.path.basename(filename)
+    # Remove any path traversal sequences that survived
+    name = name.replace("..", "").replace("/", "").replace("\\", "")
+    # Remove null bytes
+    name = name.replace("\x00", "")
+    # If empty after sanitization, give it a default name
+    if not name or name.startswith("."):
+        name = "document" + (os.path.splitext(filename)[1] or ".pdf")
+    return name
+
+
+def _validate_file_type(content: bytes, filename: str) -> None:
+    """Validate file extension and magic bytes match.
+    
+    Raises HTTPException if the file is not an allowed type or
+    the magic bytes don't match the claimed extension.
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '{ext}' not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+    # Check magic bytes for binary formats
+    if ext in (".pdf", ".xlsx", ".xls", ".docx", ".doc") and len(content) >= 4:
+        header = content[:4]
+        matched_ext = None
+        for magic, magic_ext in MAGIC_BYTES.items():
+            if header[:len(magic)] == magic:
+                matched_ext = magic_ext
+                break
+        if matched_ext is not None:
+            # ZIP-based formats (.xlsx, .docx) share the PK magic
+            if matched_ext == ".xlsx" and ext in (".xlsx", ".docx"):
+                pass  # both are ZIP-based, OK
+            elif matched_ext == ".xls" and ext in (".xls", ".doc"):
+                pass  # both are OLE2, OK
+            elif matched_ext != ext and not (matched_ext == ".xlsx" and ext == ".docx"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File content does not match extension '{ext}' (detected: {matched_ext})",
+                )
 
 
 @router.post("/upload", response_model=AssessmentSummary, status_code=status.HTTP_201_CREATED)
@@ -97,30 +160,53 @@ async def upload_documents(
     except (json.JSONDecodeError, TypeError):
         doc_type_list = []
 
+    # Validate file count
+    if len(files) > MAX_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files ({len(files)}). Maximum allowed: {MAX_FILES}",
+        )
+
     # Save files and build document metadata
     documents: List[DocumentMeta] = []
     os.makedirs(os.path.join(UPLOAD_DIR, session_id), exist_ok=True)
+    total_size = 0
 
     for i, file in enumerate(files):
         # Determine document type
         doc_type_str = doc_type_list[i] if i < len(doc_type_list) else "annual_report"
         doc_type = DOCUMENT_TYPE_MAP.get(doc_type_str, DocumentType.ANNUAL_REPORT)
 
-        # Read file content
+        # Read and validate file content
         content = await file.read()
-        file_path = os.path.join(UPLOAD_DIR, session_id, file.filename)
+        safe_name = _sanitize_filename(file.filename or "document.pdf")
+        _validate_file_type(content, safe_name)
+
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File '{safe_name}' exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit",
+            )
+        total_size += len(content)
+        if total_size > MAX_TOTAL_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Total upload size exceeds {MAX_TOTAL_SIZE // (1024*1024)}MB limit",
+            )
+
+        file_path = os.path.join(UPLOAD_DIR, session_id, safe_name)
 
         # Save to disk
         with open(file_path, "wb") as f:
             f.write(content)
 
         doc_meta = DocumentMeta(
-            filename=file.filename,
+            filename=safe_name,
             document_type=doc_type,
             file_size=len(content),
         )
         documents.append(doc_meta)
-        logger.info(f"[Upload] Saved {file.filename} ({doc_type.value}) — {len(content)} bytes")
+        logger.info(f"[Upload] Saved {safe_name} ({doc_type.value}) — {len(content)} bytes")
 
     # Initialize pipeline stages
     pipeline_stages = [

@@ -15,7 +15,9 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+
+from backend.api.auth.jwt_handler import optional_auth
 
 from backend.models.schemas import (
     AssessmentSummary,
@@ -27,7 +29,7 @@ from backend.api.routes._store import assessments_store
 from backend.graph.orchestrator import run_pipeline
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
+router = APIRouter(prefix="/api/pipeline", tags=["pipeline"], dependencies=[Depends(optional_auth)])
 
 # Track running pipelines so we can prevent double-starts
 _running_pipelines: dict[str, bool] = {}

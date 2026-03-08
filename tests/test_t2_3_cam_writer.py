@@ -10,10 +10,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from config.scoring import get_loan_terms as _get_loan_terms, BASE_SCORE
+from config.scoring_constants import (
+    LOAN_EXCELLENT_SANCTION_PCT, LOAN_EXCELLENT_RATE,
+    LOAN_GOOD_SANCTION_PCT, LOAN_GOOD_RATE,
+    LOAN_FAIR_SANCTION_PCT, LOAN_FAIR_RATE,
+    LOAN_POOR_SANCTION_PCT, LOAN_POOR_RATE,
+    LOAN_REJECTED_SANCTION_PCT,
+)
 from backend.graph.nodes.recommendation_node import (
     _generate_cam,
-    _get_loan_terms,
-    BASE_SCORE,
 )
 from backend.models.schemas import (
     AssessmentOutcome,
@@ -274,39 +280,39 @@ async def test_risk_flags_none():
 async def test_loan_terms_excellent():
     text = await _gen_cam(score=800, band=ScoreBand.EXCELLENT)
     section_7 = text.split("7. LOAN TERMS")[1].split("8. DETAILED")[0]
-    assert "100%" in section_7
-    assert "MCLR + 1.5%" in section_7
+    assert f"{LOAN_EXCELLENT_SANCTION_PCT}%" in section_7
+    assert LOAN_EXCELLENT_RATE in section_7
 
 
 @pytest.mark.asyncio
 async def test_loan_terms_good():
     text = await _gen_cam(score=700, band=ScoreBand.GOOD)
     section_7 = text.split("7. LOAN TERMS")[1].split("8. DETAILED")[0]
-    assert "85%" in section_7
-    assert "MCLR + 2.5%" in section_7
+    assert f"{LOAN_GOOD_SANCTION_PCT}%" in section_7
+    assert LOAN_GOOD_RATE in section_7
 
 
 @pytest.mark.asyncio
 async def test_loan_terms_fair():
     text = await _gen_cam(score=600, band=ScoreBand.FAIR)
     section_7 = text.split("7. LOAN TERMS")[1].split("8. DETAILED")[0]
-    assert "65%" in section_7
-    assert "MCLR + 3.5%" in section_7
+    assert f"{LOAN_FAIR_SANCTION_PCT}%" in section_7
+    assert LOAN_FAIR_RATE in section_7
 
 
 @pytest.mark.asyncio
 async def test_loan_terms_poor():
     text = await _gen_cam(score=480, band=ScoreBand.POOR)
     section_7 = text.split("7. LOAN TERMS")[1].split("8. DETAILED")[0]
-    assert "40%" in section_7
-    assert "MCLR + 5.0%" in section_7
+    assert f"{LOAN_POOR_SANCTION_PCT}%" in section_7
+    assert LOAN_POOR_RATE in section_7
 
 
 @pytest.mark.asyncio
 async def test_loan_terms_reject():
     text = await _gen_cam(score=300, band=ScoreBand.VERY_POOR)
     section_7 = text.split("7. LOAN TERMS")[1].split("8. DETAILED")[0]
-    assert "0%" in section_7
+    assert f"{LOAN_REJECTED_SANCTION_PCT}%" in section_7
     assert "Rejected" in section_7
 
 

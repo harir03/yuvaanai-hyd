@@ -12,6 +12,14 @@ from datetime import datetime
 from decimal import Decimal
 import uuid
 
+from config.scoring_constants import (
+    MIN_SCORE,
+    MAX_SCORE,
+    BASE_SCORE,
+    MAX_POSITIVE_IMPACT,
+    MAX_NEGATIVE_IMPACT,
+)
+
 
 # ──────────────────────────────────────────────
 # Enums
@@ -201,7 +209,7 @@ class ScoreBreakdownEntry(BaseModel):
     source_page: int
     source_excerpt: str
     benchmark_context: str
-    score_impact: int = Field(..., ge=-200, le=150)
+    score_impact: int = Field(..., ge=MAX_NEGATIVE_IMPACT, le=MAX_POSITIVE_IMPACT)
     reasoning: str
     confidence: float = Field(..., ge=0.0, le=1.0)
     human_override: bool = False
@@ -236,11 +244,11 @@ class ScoreResponse(BaseModel):
     """Dedicated score detail response."""
     session_id: str
     company_name: str
-    score: int = Field(..., ge=0, le=850)
+    score: int = Field(..., ge=MIN_SCORE, le=MAX_SCORE)
     score_band: ScoreBand
     outcome: AssessmentOutcome
     recommendation: str
-    base_score: int = 350
+    base_score: int = BASE_SCORE
     modules: List[ScoreModuleSummary] = Field(default_factory=list)
     hard_blocks: List[HardBlockResponse] = Field(default_factory=list)
     loan_terms: Optional[LoanTerms] = None

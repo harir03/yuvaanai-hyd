@@ -11,11 +11,13 @@ GET /api/infrastructure/flower  — Flower monitoring status
 import logging
 from typing import Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from backend.api.auth.jwt_handler import optional_auth
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/infrastructure", tags=["infrastructure"])
+router = APIRouter(prefix="/api/infrastructure", tags=["infrastructure"], dependencies=[Depends(optional_auth)])
 
 
 async def _check_postgres() -> Dict[str, Any]:

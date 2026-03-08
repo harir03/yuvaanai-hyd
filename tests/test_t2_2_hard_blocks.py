@@ -33,11 +33,9 @@ import shutil
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.scoring import get_score_band, BASE_SCORE, HARD_BLOCK_RULES
 from backend.graph.nodes.recommendation_node import (
     recommendation_node,
-    get_score_band,
-    BASE_SCORE,
-    HARD_BLOCK_RULES,
     _check_hard_blocks,
 )
 from backend.graph.state import (

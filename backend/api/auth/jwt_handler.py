@@ -159,3 +159,23 @@ async def require_admin(
             detail="Admin access required",
         )
     return user
+
+
+async def optional_auth(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[TokenData]:
+    """Auth dependency that enforces tokens in production but allows unauthenticated
+    access in development/demo mode. Routes use this so the demo works without tokens
+    while production deployments are protected.
+    """
+    if credentials is not None:
+        return verify_token(credentials.credentials)
+    # In production, require a token
+    if settings.app_env == "production":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # Development/demo — allow unauthenticated access
+    return None

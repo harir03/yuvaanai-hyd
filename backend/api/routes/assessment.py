@@ -13,14 +13,16 @@ import os
 import re
 from typing import List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, Response
 
+from backend.api.auth.jwt_handler import optional_auth
 from backend.models.schemas import AssessmentSummary, HistoryRecord, ScoreBand, AssessmentOutcome, InterviewSubmission
 from backend.api.routes._store import assessments_store, interview_store
+from config.scoring import DEFAULT_MISSING_BAND, CAM_OUTPUT_DIR
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["assessment"])
+router = APIRouter(prefix="/api", tags=["assessment"], dependencies=[Depends(optional_auth)])
 
 
 @router.get("/assessment/{session_id}", response_model=AssessmentSummary)
@@ -54,7 +56,7 @@ async def get_history():
                 loan_type=a.company.loan_type,
                 loan_amount=a.company.loan_amount,
                 score=a.score or 0,
-                score_band=a.score_band or ScoreBand.FAIR,
+                score_band=a.score_band or DEFAULT_MISSING_BAND,
                 outcome=a.outcome,
                 processing_time=a.processing_time,
                 created_at=a.created_at,
@@ -67,8 +69,8 @@ async def get_history():
 
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
-# Allowed root for CAM files — patchable for testing
-CAM_OUTPUT_ROOT = os.path.join("data", "output")
+# Allowed root for CAM files — sourced from config
+CAM_OUTPUT_ROOT = os.path.join(*CAM_OUTPUT_DIR.split("/"))
 
 
 def _validate_session_id(session_id: str) -> str:

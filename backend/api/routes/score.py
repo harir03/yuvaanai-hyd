@@ -12,7 +12,9 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from backend.api.auth.jwt_handler import optional_auth
 from fastapi.responses import Response
 
 from backend.models.schemas import (
@@ -23,10 +25,15 @@ from backend.models.schemas import (
     ScoreResponse,
 )
 from backend.api.routes._store import assessments_store
-from backend.graph.nodes.recommendation_node import _get_loan_terms
+from config.scoring import (
+    BASE_SCORE,
+    MAX_SCORE,
+    get_loan_terms,
+    get_score_band,
+)
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["score"])
+router = APIRouter(prefix="/api", tags=["score"], dependencies=[Depends(optional_auth)])
 
 
 def _build_score_response(session_id: str) -> ScoreResponse:
@@ -46,7 +53,7 @@ def _build_score_response(session_id: str) -> ScoreResponse:
 
     # Derive loan terms from band
     band = assessment.score_band or ScoreBand.DEFAULT_RISK
-    terms_dict = _get_loan_terms(band)
+    terms_dict = get_loan_terms(band)
     loan_terms = LoanTerms(
         sanction_pct=int(terms_dict["sanction_pct"]),
         rate=terms_dict["rate"],
@@ -64,7 +71,7 @@ def _build_score_response(session_id: str) -> ScoreResponse:
         score_band=band,
         outcome=assessment.outcome,
         recommendation=_recommendation_text(assessment.outcome, band),
-        base_score=350,
+        base_score=BASE_SCORE,
         modules=assessment.score_modules,
         hard_blocks=[],  # Hard blocks not stored in AssessmentSummary yet
         loan_terms=loan_terms,
@@ -113,13 +120,24 @@ async def run_scoring(session_id: str) -> ScoreResponse:
         # Already scored — return existing
         return _build_score_response(session_id)
 
-    # Mock scoring: set a demo score (real scoring via LangGraph in T3+)
-    assessment.score = 477
-    assessment.score_band = ScoreBand.POOR
-    assessment.outcome = AssessmentOutcome.CONDITIONAL
+    # Compute score dynamically from module data if available,
+    # otherwise use base score as starting point for demo
+    if assessment.score_modules:
+        total_impact = sum(
+            sum(m.score_impact for m in mod.metrics) for mod in assessment.score_modules
+        )
+        computed_score = max(0, min(MAX_SCORE, BASE_SCORE + total_impact))
+    else:
+        # No module data yet — use base score (demo fallback)
+        computed_score = BASE_SCORE
+
+    band, outcome, _ = get_score_band(computed_score)
+    assessment.score = computed_score
+    assessment.score_band = band
+    assessment.outcome = outcome
     assessment.completed_at = datetime.utcnow()
 
-    logger.info("[Score API] Mock score set for %s: 477/850", session_id)
+    logger.info("[Score API] Score computed for %s: %d/%d", session_id, computed_score, MAX_SCORE)
     return _build_score_response(session_id)
 
 

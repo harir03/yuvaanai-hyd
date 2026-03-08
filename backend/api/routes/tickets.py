@@ -12,14 +12,16 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from backend.api.auth.jwt_handler import optional_auth
 
 from backend.models.schemas import Ticket, TicketResolveRequest, TicketStatus
 from backend.api.routes._store import assessments_store
 from backend.graph.nodes.ticket_node import store_precedent, get_ticket_statistics
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["tickets"])
+router = APIRouter(prefix="/api", tags=["tickets"], dependencies=[Depends(optional_auth)])
 
 
 @router.get("/tickets/{session_id}", response_model=List[Ticket])

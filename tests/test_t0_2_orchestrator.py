@@ -34,7 +34,7 @@ from backend.graph.state import (
     FiveCsMapping,
 )
 from backend.graph.orchestrator import build_graph, get_compiled_graph, run_pipeline
-from backend.graph.nodes.recommendation_node import get_score_band
+from config.scoring import get_score_band
 from backend.models.schemas import (
     CompanyInfo,
     DocumentMeta,

@@ -23,6 +23,7 @@ from backend.models.schemas import (
     ScoreResponse,
     HardBlockResponse,
 )
+from config.scoring import BASE_SCORE, get_score_band, get_loan_terms
 
 
 # ── fixtures ──
@@ -113,7 +114,7 @@ async def test_get_score_success():
     assert data["score"] == 650
     assert data["score_band"] == ScoreBand.GOOD.value
     assert data["company_name"] == "TestCorp Ltd"
-    assert data["base_score"] == 350
+    assert data["base_score"] == BASE_SCORE
 
 
 @pytest.mark.asyncio
@@ -162,10 +163,11 @@ async def test_get_score_loan_terms_good():
     ) as ac:
         resp = await ac.get("/api/score/sess-1")
     terms = resp.json()["loan_terms"]
-    assert terms["sanction_pct"] == 85
-    assert terms["rate"] == "MCLR + 2.5%"
-    assert terms["tenure"] == "Up to 5 years"
-    assert terms["review"] == "Semi-annual"
+    expected_terms = get_loan_terms(ScoreBand.GOOD)
+    assert terms["sanction_pct"] == int(expected_terms["sanction_pct"])
+    assert terms["rate"] == expected_terms["rate"]
+    assert terms["tenure"] == expected_terms["tenure"]
+    assert terms["review"] == expected_terms["review"]
 
 
 @pytest.mark.asyncio
@@ -217,8 +219,8 @@ async def test_run_scoring_not_found():
 
 
 @pytest.mark.asyncio
-async def test_run_scoring_mock():
-    """POST sets mock score on unscored session."""
+async def test_run_scoring_dynamic():
+    """POST computes dynamic score on unscored session (no modules = BASE_SCORE)."""
     assessments_store["sess-2"] = _unscored_assessment()
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -226,9 +228,11 @@ async def test_run_scoring_mock():
         resp = await ac.post("/api/score/sess-2/run")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["score"] == 477
-    assert data["score_band"] == ScoreBand.POOR.value
-    assert data["outcome"] == "CONDITIONAL"
+    # No modules attached → score defaults to BASE_SCORE
+    expected_band, expected_outcome, _ = get_score_band(BASE_SCORE)
+    assert data["score"] == BASE_SCORE
+    assert data["score_band"] == expected_band.value
+    assert data["outcome"] == expected_outcome.value
 
 
 @pytest.mark.asyncio
@@ -251,7 +255,7 @@ async def test_run_scoring_updates_store():
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
         await ac.post("/api/score/sess-2/run")
-    assert assessments_store["sess-2"].score == 477
+    assert assessments_store["sess-2"].score == BASE_SCORE
     assert assessments_store["sess-2"].completed_at is not None
 
 
@@ -280,7 +284,7 @@ def test_score_response_model_validation():
         recommendation="OK",
     )
     assert resp.score == 700
-    assert resp.base_score == 350
+    assert resp.base_score == BASE_SCORE
 
 
 def test_loan_terms_model():

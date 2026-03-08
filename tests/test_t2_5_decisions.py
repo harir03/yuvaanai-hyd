@@ -25,6 +25,7 @@ from backend.models.schemas import (
     ScoreModule,
     ScoreModuleSummary,
 )
+from config.scoring_constants import LOAN_EXCELLENT_SANCTION_PCT, LOAN_EXCELLENT_RATE
 
 
 # ── fixtures ──
@@ -230,8 +231,8 @@ async def test_get_decision_includes_loan_terms():
     ) as ac:
         resp = await ac.get("/api/decisions/s1")
     terms = resp.json()["loan_terms"]
-    assert terms["sanction_pct"] == 100
-    assert terms["rate"] == "MCLR + 1.5%"
+    assert terms["sanction_pct"] == int(LOAN_EXCELLENT_SANCTION_PCT)
+    assert terms["rate"] == LOAN_EXCELLENT_RATE
 
 
 @pytest.mark.asyncio

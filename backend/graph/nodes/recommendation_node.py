@@ -42,47 +42,19 @@ from backend.models.schemas import (
     EventType,
 )
 from backend.thinking.event_emitter import ThinkingEventEmitter
+from config.scoring import (
+    BASE_SCORE,
+    MODULE_LIMITS,
+    SCORE_BANDS,
+    HARD_BLOCK_RULES,
+    MIN_SCORE,
+    MAX_SCORE,
+    CAM_OUTPUT_DIR,
+    get_score_band,
+    get_loan_terms as _get_loan_terms,
+)
 
 logger = logging.getLogger(__name__)
-
-# Base score — every assessment starts here
-BASE_SCORE = 350
-
-# Module score limits (per copilot-instructions.md Section 8)
-MODULE_LIMITS = {
-    ScoreModule.CAPACITY:   {"max_positive": 150, "max_negative": -100},
-    ScoreModule.CHARACTER:  {"max_positive": 120, "max_negative": -200},
-    ScoreModule.CAPITAL:    {"max_positive": 80,  "max_negative": -80},
-    ScoreModule.COLLATERAL: {"max_positive": 60,  "max_negative": -40},
-    ScoreModule.CONDITIONS: {"max_positive": 50,  "max_negative": -50},
-    ScoreModule.COMPOUND:   {"max_positive": 57,  "max_negative": -130},
-}
-
-# Score band thresholds
-SCORE_BANDS = [
-    (750, ScoreBand.EXCELLENT, AssessmentOutcome.APPROVED, "Full amount, MCLR+1.5%"),
-    (650, ScoreBand.GOOD, AssessmentOutcome.APPROVED, "85% amount, MCLR+2.5%"),
-    (550, ScoreBand.FAIR, AssessmentOutcome.CONDITIONAL, "65% amount, MCLR+3.5%"),
-    (450, ScoreBand.POOR, AssessmentOutcome.CONDITIONAL, "40% amount, MCLR+5.0%"),
-    (350, ScoreBand.VERY_POOR, AssessmentOutcome.REJECTED, "Reject"),
-    (0,   ScoreBand.DEFAULT_RISK, AssessmentOutcome.REJECTED, "Permanent reject"),
-]
-
-# Hard block triggers and their score caps
-HARD_BLOCK_RULES = {
-    "wilful_defaulter": 200,
-    "active_criminal_case": 150,
-    "dscr_below_1": 300,
-    "nclt_active": 250,
-}
-
-
-def get_score_band(score: int) -> Tuple[ScoreBand, AssessmentOutcome, str]:
-    """Return (ScoreBand, AssessmentOutcome, recommendation) for a given score."""
-    for threshold, band, outcome, rec in SCORE_BANDS:
-        if score >= threshold:
-            return band, outcome, rec
-    return ScoreBand.DEFAULT_RISK, AssessmentOutcome.REJECTED, "Permanent reject"
 
 
 async def recommendation_node(state: CreditAppraisalState) -> dict:
@@ -204,14 +176,14 @@ async def recommendation_node(state: CreditAppraisalState) -> dict:
                     f"due to {hard_blocks[0].trigger}"
                 )
 
-        # Clamp to 0-850
-        final_score = max(0, min(850, effective_score))
+        # Clamp to configured range
+        final_score = max(MIN_SCORE, min(MAX_SCORE, effective_score))
 
         # ── Step 5: Derive band + outcome ──
         band, outcome, recommendation = get_score_band(final_score)
 
         await emitter.decided(
-            f"Final Score: {final_score}/850 — {band.value} ({outcome.value}). "
+            f"Final Score: {final_score}/{MAX_SCORE} — {band.value} ({outcome.value}). "
             f"Base {BASE_SCORE} + adjustments {total_impact:+d} = {raw_score}"
             + (f" → capped to {effective_score}" if effective_score != raw_score else ""),
             confidence=0.92,
@@ -237,10 +209,10 @@ async def recommendation_node(state: CreditAppraisalState) -> dict:
         for stage in state.pipeline_stages:
             if stage.stage == PipelineStageEnum.RECOMMENDATION:
                 stage.status = PipelineStageStatus.COMPLETED
-                stage.message = f"Score: {final_score}/850 — {band.value}"
+                stage.message = f"Score: {final_score}/{MAX_SCORE} — {band.value}"
 
         await emitter.concluding(
-            f"Scoring complete. {company_name}: {final_score}/850 ({band.value}). "
+            f"Scoring complete. {company_name}: {final_score}/{MAX_SCORE} ({band.value}). "
             f"Recommendation: {recommendation}. CAM generated."
         )
 
@@ -1258,7 +1230,7 @@ async def _generate_cam(
         "-" * 80,
         "1. EXECUTIVE SUMMARY",
         "-" * 80,
-        f"Credit Score: {score}/850 ({band.value})",
+        f"Credit Score: {score}/{MAX_SCORE} ({band.value})",
         f"Recommendation: {outcome.value} — {recommendation}",
         "",
     ]
@@ -1323,7 +1295,7 @@ async def _generate_cam(
             f"{len(ms.metrics)} metric(s))"
         )
     cam_lines.append(f"  {'BASE':12s}: {BASE_SCORE:+4d}")
-    cam_lines.append(f"  {'TOTAL':12s}: {score:4d}/850")
+    cam_lines.append(f"  {'TOTAL':12s}: {score:4d}/{MAX_SCORE}")
     cam_lines.append("")
 
     # ── 5. Cross-Verification Summary ──
@@ -1384,7 +1356,7 @@ async def _generate_cam(
     cam_text = "\n".join(cam_lines)
 
     # Save CAM to file
-    cam_dir = os.path.join("data", "output", session_id)
+    cam_dir = os.path.join(*CAM_OUTPUT_DIR.split("/"), session_id)
     os.makedirs(cam_dir, exist_ok=True)
     cam_path = os.path.join(cam_dir, "credit_appraisal_memo.txt")
 
@@ -1399,15 +1371,5 @@ async def _generate_cam(
     return cam_path
 
 
-def _get_loan_terms(band: ScoreBand) -> Dict[str, str]:
-    """Derive loan terms from score band per architecture spec."""
-    if band == ScoreBand.EXCELLENT:
-        return {"sanction_pct": "100", "rate": "MCLR + 1.5%", "tenure": "Up to 7 years", "review": "Annual"}
-    elif band == ScoreBand.GOOD:
-        return {"sanction_pct": "85", "rate": "MCLR + 2.5%", "tenure": "Up to 5 years", "review": "Semi-annual"}
-    elif band == ScoreBand.FAIR:
-        return {"sanction_pct": "65", "rate": "MCLR + 3.5%", "tenure": "Up to 3 years", "review": "Quarterly"}
-    elif band == ScoreBand.POOR:
-        return {"sanction_pct": "40", "rate": "MCLR + 5.0%", "tenure": "Up to 2 years", "review": "Quarterly"}
-    else:
-        return {"sanction_pct": "0", "rate": "N/A — Rejected", "tenure": "N/A", "review": "N/A"}
+# _get_loan_terms is imported from config.scoring (aliased as _get_loan_terms)
+# Kept for backward compatibility — all consumers already import it from here

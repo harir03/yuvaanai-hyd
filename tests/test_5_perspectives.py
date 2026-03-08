@@ -59,9 +59,19 @@ from backend.graph.state import (
     EvidencePackage, HardBlock,
 )
 from backend.graph.orchestrator import build_graph, run_pipeline
+from config.scoring import (
+    BASE_SCORE, MODULE_LIMITS, SCORE_BANDS, HARD_BLOCK_RULES,
+)
+from config.scoring_constants import (
+    MAX_SCORE,
+    BAND_EXCELLENT_THRESHOLD,
+    BAND_GOOD_THRESHOLD,
+    BAND_FAIR_THRESHOLD,
+    BAND_POOR_THRESHOLD,
+    BAND_VERY_POOR_THRESHOLD,
+)
 from backend.graph.nodes.recommendation_node import (
-    recommendation_node, BASE_SCORE, MODULE_LIMITS,
-    SCORE_BANDS, HARD_BLOCK_RULES,
+    recommendation_node,
 )
 from backend.graph.nodes.consolidator_node import consolidator_node, SOURCE_WEIGHT
 from backend.graph.nodes.validator_node import validator_node
@@ -391,31 +401,31 @@ class TestP1_CreditOfficer:
         """Score 750+ → Excellent → APPROVED."""
         for threshold, band, *_ in SCORE_BANDS:
             if band == ScoreBand.EXCELLENT:
-                assert threshold == 750
+                assert threshold == BAND_EXCELLENT_THRESHOLD
 
     def test_score_band_good(self):
         """Score 650-749 → Good → APPROVED."""
         for threshold, band, *_ in SCORE_BANDS:
             if band == ScoreBand.GOOD:
-                assert threshold == 650
+                assert threshold == BAND_GOOD_THRESHOLD
 
     def test_score_band_fair(self):
         """Score 550-649 → Fair → CONDITIONAL."""
         for threshold, band, *_ in SCORE_BANDS:
             if band == ScoreBand.FAIR:
-                assert threshold == 550
+                assert threshold == BAND_FAIR_THRESHOLD
 
     def test_score_band_poor(self):
         """Score 450-549 → Poor → CONDITIONAL."""
         for threshold, band, *_ in SCORE_BANDS:
             if band == ScoreBand.POOR:
-                assert threshold == 450
+                assert threshold == BAND_POOR_THRESHOLD
 
     def test_score_band_very_poor_reject(self):
         """Score 350-449 → Very Poor → REJECTED."""
         for threshold, band, *_ in SCORE_BANDS:
             if band == ScoreBand.VERY_POOR:
-                assert threshold == 350
+                assert threshold == BAND_VERY_POOR_THRESHOLD
 
     # ── Hard Blocks ──
 
@@ -432,7 +442,7 @@ class TestP1_CreditOfficer:
     def test_hard_block_caps_are_below_reject_threshold(self):
         """All hard block caps should result in rejection (< 450)."""
         for trigger, cap in HARD_BLOCK_RULES.items():
-            assert cap < 450, f"Hard block '{trigger}' cap {cap} doesn't result in rejection"
+            assert cap < BAND_POOR_THRESHOLD, f"Hard block '{trigger}' cap {cap} doesn't result in rejection"
 
     # ── Module Limits Match Architecture ──
 
@@ -465,8 +475,8 @@ class TestP1_CreditOfficer:
         total_up = sum(m["max_positive"] for m in MODULE_LIMITS.values())
         raw = BASE_SCORE + total_up
         # Raw sum may exceed 850 but runtime clamps it
-        clamped = min(raw, 850)
-        assert clamped == 850, f"Clamped max should be 850, got {clamped}"
+        clamped = min(raw, MAX_SCORE)
+        assert clamped == MAX_SCORE, f"Clamped max should be {MAX_SCORE}, got {clamped}"
 
     def test_min_possible_score(self):
         """BASE_SCORE + all max_negatives should be >= 0 after clamping."""
@@ -667,7 +677,7 @@ class TestP3_Manager:
     def test_score_bands_fully_cover_range(self):
         """Score bands must cover 0-850 without gaps."""
         thresholds = sorted([t for t, *_ in SCORE_BANDS], reverse=True)
-        assert thresholds[0] == 750  # Excellent starts at 750
+        assert thresholds[0] == BAND_EXCELLENT_THRESHOLD  # Excellent starts at 750
         assert thresholds[-1] == 0   # Default Risk covers bottom
 
     def test_all_outcomes_mapped(self):
@@ -686,7 +696,7 @@ class TestP3_Manager:
     def test_all_hard_blocks_result_in_rejection(self):
         """Every hard block cap is below the Good band threshold (650)."""
         for trigger, cap in HARD_BLOCK_RULES.items():
-            assert cap < 650, f"Hard block '{trigger}' cap {cap} allows approval"
+            assert cap < BAND_GOOD_THRESHOLD, f"Hard block '{trigger}' cap {cap} allows approval"
 
     def test_wilful_defaulter_overrides_everything(self):
         """Even with perfect modules (+517), wilful defaulter caps at 200."""

@@ -9,8 +9,9 @@ GET   /api/compliance/{session_id}/flags — List compliance flags with filters
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from backend.api.auth.jwt_handler import optional_auth
 from backend.agents.evidence.compliance_engine import (
     ComplianceFlag,
     ComplianceResult,
@@ -21,7 +22,7 @@ from backend.agents.evidence.compliance_engine import (
 from backend.api.routes._store import assessments_store, compliance_store
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["compliance"])
+router = APIRouter(prefix="/api", tags=["compliance"], dependencies=[Depends(optional_auth)])
 
 
 @router.get("/compliance/{session_id}", response_model=ComplianceResult)

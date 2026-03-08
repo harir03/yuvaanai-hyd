@@ -29,7 +29,7 @@ _RISK_KEYWORDS = [
     "going concern", "material uncertainty", "material weakness",
     "litigation", "lawsuit", "criminal case", "prosecution",
     "regulatory action", "penalty", "fine", "censure", "debarred",
-    "pledge", "pledged shares", "invocation",
+    "pledge", "pledged", "pledged shares", "invocation",
     "related party", "rpt", "related party transaction",
     "contingent liability", "off-balance sheet", "undisclosed",
     "circular trading", "round tripping", "shell company",
@@ -37,7 +37,46 @@ _RISK_KEYWORDS = [
     "late filing", "non-compliance", "violation",
     "promoter exit", "stake sale", "dilution",
     "management change", "cfo resignation", "auditor change",
+    "show-cause notice", "show cause", "sebi action", "rbi action",
+    "qualified the report", "qualified report", "audit qualification",
+    "inability to verify", "unverifiable",
 ]
+
+# Severity weights: CRITICAL (1.0), HIGH (0.7), MEDIUM (0.4), LOW (0.2)
+# A single CRITICAL keyword (e.g., "fraud") triggers risk detection alone.
+_RISK_SEVERITY: Dict[str, float] = {
+    # CRITICAL — hard-block territory, single keyword = definitive risk
+    "wilful defaulter": 1.0, "fraud": 1.0, "fraudulent": 1.0,
+    "money laundering": 1.0, "siphoning": 1.0, "criminal case": 1.0,
+    # HIGH — serious concern, single keyword = strong risk signal
+    "default": 0.7, "defaulted": 0.7, "npa": 0.7, "non-performing": 0.7,
+    "insolvency": 0.7, "nclt": 0.7, "bankruptcy": 0.7, "liquidation": 0.7,
+    "winding up": 0.7, "misappropriation": 0.7, "embezzlement": 0.7,
+    "diversion of funds": 0.7, "round tripping": 0.7, "circular trading": 0.7,
+    "shell company": 0.7, "going concern": 0.7, "material uncertainty": 0.7,
+    "prosecution": 0.7,
+    # MEDIUM — notable risk, needs corroboration
+    "restructuring": 0.4, "debt restructuring": 0.4, "cdr": 0.4, "s4a": 0.4,
+    "downgrade": 0.4, "downgraded": 0.4, "credit watch": 0.4,
+    "negative outlook": 0.4, "qualified opinion": 0.4, "adverse opinion": 0.4,
+    "disclaimer of opinion": 0.4, "material weakness": 0.4,
+    "litigation": 0.4, "lawsuit": 0.4, "regulatory action": 0.4,
+    "penalty": 0.4, "fine": 0.4, "censure": 0.4, "debarred": 0.4,
+    "pledge": 0.4, "pledged": 0.4, "pledged shares": 0.4, "invocation": 0.4,
+    "contingent liability": 0.4, "off-balance sheet": 0.4, "undisclosed": 0.4,
+    "show-cause notice": 0.4, "show cause": 0.4, "sebi action": 0.4, "rbi action": 0.4,
+    "qualified the report": 0.4, "qualified report": 0.4, "audit qualification": 0.4,
+    "inability to verify": 0.4, "unverifiable": 0.4,
+    # LOW — minor concern, monitoring only
+    "related party": 0.2, "rpt": 0.2, "related party transaction": 0.2,
+    "late filing": 0.2, "non-compliance": 0.2, "violation": 0.2,
+    "promoter exit": 0.2, "stake sale": 0.2, "dilution": 0.2,
+    "management change": 0.2, "cfo resignation": 0.2, "auditor change": 0.2,
+}
+
+# Severity threshold: total severity >= this triggers risk_detected
+# A single CRITICAL (1.0) exceeds this; two MEDIUMs (0.4+0.4=0.8) also exceed.
+RISK_SEVERITY_THRESHOLD = 0.6
 
 _NEGATIVE_KEYWORDS = [
     "decline", "declining", "decreased", "deteriorated", "weakened",
@@ -94,17 +133,26 @@ def _init_model() -> None:
 def _keyword_analyze(text: str) -> Dict[str, Any]:
     """Keyword-based sentiment and risk analysis (fallback).
 
-    Scans for domain-specific keywords and computes sentiment scores.
+    Uses severity-weighted scoring: each risk keyword carries a severity
+    weight (CRITICAL=1.0, HIGH=0.7, MEDIUM=0.4, LOW=0.2). A single
+    CRITICAL keyword like "fraud investigation ongoing" triggers risk
+    detection — not just a keyword count threshold.
     """
     text_lower = text.lower()
 
-    # Count keyword matches
+    # Match risk keywords with severity weighting
     risk_matches = []
+    total_severity = 0.0
+    max_severity = 0.0
+    risk_detail = []
     for kw in _RISK_KEYWORDS:
-        # Word boundary match to avoid partial matches
         pattern = r"\b" + re.escape(kw) + r"\b"
         if re.search(pattern, text_lower):
+            severity = _RISK_SEVERITY.get(kw, 0.4)
             risk_matches.append(kw)
+            total_severity += severity
+            max_severity = max(max_severity, severity)
+            risk_detail.append({"keyword": kw, "severity": severity})
 
     negative_count = sum(
         1 for kw in _NEGATIVE_KEYWORDS
@@ -121,7 +169,6 @@ def _keyword_analyze(text: str) -> Dict[str, Any]:
         sentiment_score = 0.0
     else:
         net = positive_count - negative_count - len(risk_matches) * 1.5
-        # Normalize to [-1, 1]
         sentiment_score = max(-1.0, min(1.0, net / max(total_signals, 1)))
         if sentiment_score > 0.1:
             sentiment = "positive"
@@ -130,16 +177,21 @@ def _keyword_analyze(text: str) -> Dict[str, Any]:
         else:
             sentiment = "neutral"
 
-    # Risk score: 0 (safe) to 1 (very risky)
-    risk_score = min(1.0, len(risk_matches) / 5.0)  # 5+ risk keywords → max risk
-    risk_detected = len(risk_matches) >= 2  # Need at least 2 risk signals
+    # Risk score: severity-weighted (total_severity / 3.0 caps at 1.0)
+    risk_score = min(1.0, total_severity / 3.0)
+
+    # Severity-based detection: single CRITICAL (1.0) exceeds threshold (0.6)
+    risk_detected = total_severity >= RISK_SEVERITY_THRESHOLD
 
     return {
         "sentiment": sentiment,
         "sentiment_score": round(sentiment_score, 4),
         "risk_score": round(risk_score, 4),
         "risk_detected": risk_detected,
-        "risk_keywords_found": risk_matches[:10],  # Cap at 10
+        "risk_keywords_found": risk_matches[:10],
+        "risk_keywords_detail": sorted(risk_detail, key=lambda x: -x["severity"])[:10],
+        "total_severity": round(total_severity, 2),
+        "max_keyword_severity": round(max_severity, 2),
         "positive_signals": positive_count,
         "negative_signals": negative_count,
         "method": "keyword_fallback",

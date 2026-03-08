@@ -141,7 +141,8 @@ async def organizer_node(state: CreditAppraisalState) -> dict:
         # 6a. Isolation Forest — tabular anomaly on computed metrics
         try:
             metrics_dict = metrics.model_dump() if hasattr(metrics, "model_dump") else {}
-            if_result = iforest.detect_anomalies(metrics_dict)
+            sector = state.company.sector if state.company else None
+            if_result = iforest.detect_anomalies(metrics_dict, sector=sector)
             ml_signals["isolation_forest_anomaly"] = if_result.get("is_anomaly", False)
             ml_signals["isolation_forest_score"] = if_result.get("anomaly_score", 0.0)
             ml_signals["isolation_forest_detail"] = if_result

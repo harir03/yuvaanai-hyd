@@ -26,6 +26,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.scoring_constants import BASE_SCORE
+
 PASSED = 0
 FAILED = 0
 
@@ -53,7 +55,7 @@ def _minimal_context():
         "score_band": "Poor",
         "outcome": "CONDITIONAL",
         "recommendation": "Conditional approval — additional review required (Poor)",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "date": "2025-01-15",
         "sector": "Steel Manufacturing",
         "loan_type": "Working Capital",
@@ -74,7 +76,7 @@ def _full_context():
         "score_band": "Poor",
         "outcome": "CONDITIONAL",
         "recommendation": "Conditional approval — additional review required (Poor)",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "date": "2025-01-15",
         "sector": "Steel Manufacturing",
         "loan_type": "Working Capital",
@@ -911,7 +913,7 @@ def test_build_cam_context_from_dict():
         "score_band": "Fair",
         "outcome": "CONDITIONAL",
         "recommendation": "Review",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "modules": [],
         "hard_blocks": [],
         "loan_terms": None,
@@ -932,7 +934,7 @@ def test_build_cam_context_with_assessment():
         "score_band": "Poor",
         "outcome": "CONDITIONAL",
         "recommendation": "Review",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "modules": [],
         "hard_blocks": [],
         "loan_terms": None,
@@ -960,7 +962,7 @@ def test_build_cam_context_risk_flags_extraction():
         "score_band": "Very Poor",
         "outcome": "REJECTED",
         "recommendation": "Reject",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "modules": [
             {
                 "module": "CAPACITY",
@@ -991,7 +993,7 @@ def test_build_cam_context_loan_terms():
     score_resp = {
         "company_name": "T", "session_id": "s4", "score": 700,
         "score_band": "Good", "outcome": "APPROVED",
-        "recommendation": "OK", "base_score": 350,
+        "recommendation": "OK", "base_score": BASE_SCORE,
         "modules": [], "hard_blocks": [],
         "loan_terms": {"sanction_pct": 85, "rate": "MCLR+2.5%", "tenure": "5 years", "review": "Semi-annual"},
     }
@@ -1011,7 +1013,7 @@ def test_build_score_context_from_dict():
         "score_band": "Excellent",
         "outcome": "APPROVED",
         "recommendation": "Full approval",
-        "base_score": 350,
+        "base_score": BASE_SCORE,
         "modules": [],
         "hard_blocks": [],
         "loan_terms": None,
@@ -1028,7 +1030,7 @@ def test_build_score_context_with_modules():
     score_resp = {
         "company_name": "T", "session_id": "s6", "score": 500,
         "score_band": "Poor", "outcome": "CONDITIONAL",
-        "recommendation": "Review", "base_score": 350,
+        "recommendation": "Review", "base_score": BASE_SCORE,
         "modules": [{"module": "CAPACITY", "score": 50, "max_positive": 150,
                       "max_negative": -100, "metrics": []}],
         "hard_blocks": [],

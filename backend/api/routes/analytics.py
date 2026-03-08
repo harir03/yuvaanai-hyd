@@ -7,13 +7,14 @@ GET /api/analytics — Aggregated statistics for the Analytics Dashboard
 import logging
 from collections import Counter
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from backend.api.auth.jwt_handler import optional_auth
 from backend.models.schemas import AnalyticsData, AssessmentOutcome
 from backend.api.routes._store import assessments_store
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["analytics"])
+router = APIRouter(prefix="/api", tags=["analytics"], dependencies=[Depends(optional_auth)])
 
 
 @router.get("/analytics", response_model=AnalyticsData)

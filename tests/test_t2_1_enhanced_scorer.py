@@ -41,11 +41,9 @@ import shutil
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.scoring import get_score_band, BASE_SCORE, MODULE_LIMITS
 from backend.graph.nodes.recommendation_node import (
     recommendation_node,
-    get_score_band,
-    BASE_SCORE,
-    MODULE_LIMITS,
     _score_capacity,
     _score_character,
     _score_capital,
