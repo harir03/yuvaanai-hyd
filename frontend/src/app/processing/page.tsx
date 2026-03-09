@@ -85,7 +85,8 @@ function ProcessingContent() {
             let index = 0;
             const interval = setInterval(() => {
                 if (index < mockThinkingEvents.length) {
-                    setVisibleEvents((prev) => [...prev, mockThinkingEvents[index]]);
+                    const current = index;
+                    setVisibleEvents((prev) => [...prev, mockThinkingEvents[current]]);
                     index++;
                 } else {
                     clearInterval(interval);
@@ -146,10 +147,11 @@ function ProcessingContent() {
         }
     }, [visibleEvents, autoScroll]);
 
-    const filteredEvents =
+    const filteredEvents = (
         activeFilter === "all"
             ? visibleEvents
-            : visibleEvents.filter((e) => e.agent.includes(activeFilter));
+            : visibleEvents.filter((e) => e?.agent?.includes(activeFilter))
+    ).filter(Boolean);
 
     const overallProgress = pipeline.filter((s) => s.status === "completed").length / pipeline.length;
 

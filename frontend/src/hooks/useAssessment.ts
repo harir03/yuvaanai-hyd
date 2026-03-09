@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
     getAssessment,
-    getScoreResult,
+    getScore,
     type ScoreResult,
 } from "@/lib/api";
 import {
@@ -52,9 +52,9 @@ export function useAssessment({
     sessionId,
 }: UseAssessmentOptions): UseAssessmentReturn {
     const [company, setCompany] = useState<CompanyInfo>(mockCompany);
-    const [score, setScore] = useState(mockAssessment.score);
+    const [score, setScore] = useState(mockAssessment.finalScore);
     const [scoreBand, setScoreBand] = useState(mockAssessment.scoreBand);
-    const [outcome, setOutcome] = useState(mockAssessment.outcome);
+    const [outcome, setOutcome] = useState(mockAssessment.recommendation);
     const [modules, setModules] = useState<ScoreModule[]>(mockScoreModules);
     const [camSections, setCamSections] = useState<CAMSection[]>(mockCAM);
     const [loading, setLoading] = useState(!!sessionId);
@@ -68,7 +68,7 @@ export function useAssessment({
         try {
             const [assessment, scoreResult] = await Promise.all([
                 getAssessment(sessionId),
-                getScoreResult(sessionId),
+                getScore(sessionId),
             ]);
 
             setCompany(assessment.company);
@@ -76,9 +76,6 @@ export function useAssessment({
             setScoreBand(scoreResult.scoreBand);
             setOutcome(scoreResult.outcome);
             setModules(scoreResult.modules);
-            if (scoreResult.camSections) {
-                setCamSections(scoreResult.camSections);
-            }
         } catch (err) {
             // Fall back to mock data
             setError(err instanceof Error ? err.message : "Failed to load assessment");

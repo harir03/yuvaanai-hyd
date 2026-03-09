@@ -62,7 +62,7 @@ export function useThinkingEvents({
         (agent: string | null) => {
             if (!agent) return events;
             return events.filter(
-                (e) => e.agentName?.toLowerCase().includes(agent.toLowerCase()),
+                (e) => e.agent?.toLowerCase().includes(agent.toLowerCase()),
             );
         },
         [events],

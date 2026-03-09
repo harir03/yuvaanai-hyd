@@ -49,7 +49,7 @@ export function usePipeline({
         try {
             const status = await getPipelineStatus(sessionId);
             setStages(status.stages);
-            if (status.workers) setWorkers(status.workers);
+            if ("workers" in status && status.workers) setWorkers(status.workers as WorkerStatus[]);
         } catch {
             // Keep current/mock data on error
         }

@@ -74,7 +74,7 @@ export function useTickets({
             setError(null);
             try {
                 if (sessionId) {
-                    await resolveTicket(sessionId, ticketId, response, action);
+                    await resolveTicket(ticketId, response);
                 }
                 // Update local state
                 setTickets((prev) =>

@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getScoreResult } from "@/lib/api";
+import { getScore } from "@/lib/api";
 import {
     mockAssessment,
     mockScoreModules,
@@ -36,9 +36,9 @@ interface UseScoreReturn {
 }
 
 export function useScore({ sessionId }: UseScoreOptions): UseScoreReturn {
-    const [score, setScore] = useState(mockAssessment.score);
+    const [score, setScore] = useState(mockAssessment.finalScore);
     const [scoreBand, setScoreBand] = useState(mockAssessment.scoreBand);
-    const [outcome, setOutcome] = useState(mockAssessment.outcome);
+    const [outcome, setOutcome] = useState(mockAssessment.recommendation);
     const [modules, setModules] = useState<ScoreModule[]>(mockScoreModules);
     const [loading, setLoading] = useState(!!sessionId);
     const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export function useScore({ sessionId }: UseScoreOptions): UseScoreReturn {
         setError(null);
 
         try {
-            const result = await getScoreResult(sessionId);
+            const result = await getScore(sessionId);
             setScore(result.score);
             setScoreBand(result.scoreBand);
             setOutcome(result.outcome);
