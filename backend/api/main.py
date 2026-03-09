@@ -14,7 +14,7 @@ Run with: uvicorn backend.api.main:app --reload --port 8000
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
@@ -29,6 +29,7 @@ from backend.api.routes.decisions import router as decisions_router
 from backend.api.routes.pipeline import router as pipeline_router
 from backend.api.routes.compliance import router as compliance_router
 from backend.api.routes.infrastructure import router as infrastructure_router
+from backend.api.routes.auth import router as auth_router
 
 # WebSocket handlers
 from backend.api.websocket.thinking_ws import thinking_ws_endpoint, get_active_sessions
@@ -134,6 +135,7 @@ app.add_middleware(
 
 
 # ── REST Routes ──
+app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(assessment_router)
 app.include_router(tickets_router)
@@ -147,14 +149,30 @@ app.include_router(infrastructure_router)
 
 # ── WebSocket Endpoints ──
 @app.websocket("/ws/thinking/{session_id}")
-async def thinking_websocket(websocket: WebSocket, session_id: str):
+async def thinking_websocket(websocket: WebSocket, session_id: str, token: str = Query(default="")):
     """Live Thinking Chatbot — streams AI reasoning events."""
+    if token:
+        from backend.api.auth.jwt_handler import verify_token
+        from fastapi import HTTPException as _H
+        try:
+            verify_token(token)
+        except _H:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
     await thinking_ws_endpoint(websocket, session_id)
 
 
 @app.websocket("/ws/progress/{session_id}")
-async def progress_websocket(websocket: WebSocket, session_id: str):
+async def progress_websocket(websocket: WebSocket, session_id: str, token: str = Query(default="")):
     """Pipeline Progress — streams stage transitions."""
+    if token:
+        from backend.api.auth.jwt_handler import verify_token
+        from fastapi import HTTPException as _H
+        try:
+            verify_token(token)
+        except _H:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
     await progress_ws_endpoint(websocket, session_id)
 
 

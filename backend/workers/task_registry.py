@@ -13,6 +13,7 @@ Usage:
     results = await dispatch_workers(session_id, documents)
 """
 
+import asyncio
 import logging
 from typing import Dict, Type, List, Optional
 
@@ -85,6 +86,8 @@ async def dispatch_workers(
     Returns:
         Dict mapping worker_id → WorkerOutput
     """
+    # Build list of (worker_id, coroutine) pairs for parallel dispatch
+    tasks: Dict[str, any] = {}
     results: Dict[str, WorkerOutput] = {}
 
     for doc in documents:
@@ -107,7 +110,6 @@ async def dispatch_workers(
             logger.warning(
                 f"[Registry] No worker registered for {doc_type.value}, skipping"
             )
-            # Create a stub output so we know it was skipped
             results[f"W?-{doc_type.value}"] = WorkerOutput(
                 worker_id=f"W?-{doc_type.value}",
                 document_type=doc_type.value,
@@ -116,15 +118,33 @@ async def dispatch_workers(
             )
             continue
 
-        # Instantiate and run
+        # Instantiate worker
         worker = worker_cls(session_id, file_path)
-        logger.info(f"[Registry] Dispatching {worker.worker_id} for {doc_type.value}")
+        logger.info(f"[Registry] Queuing {worker.worker_id} for parallel dispatch ({doc_type.value})")
+        tasks[worker.worker_id] = worker.process()
 
-        output = await worker.process()
-        results[worker.worker_id] = output
-        logger.info(
-            f"[Registry] {worker.worker_id} finished: status={output.status}, "
-            f"confidence={output.confidence:.2f}"
-        )
+    # ── Run all workers in parallel ──
+    if tasks:
+        worker_ids = list(tasks.keys())
+        coros = list(tasks.values())
+        logger.info(f"[Registry] Dispatching {len(coros)} workers in parallel: {worker_ids}")
+
+        outputs = await asyncio.gather(*coros, return_exceptions=True)
+
+        for wid, output in zip(worker_ids, outputs):
+            if isinstance(output, Exception):
+                logger.error(f"[Registry] {wid} raised exception: {output}")
+                results[wid] = WorkerOutput(
+                    worker_id=wid,
+                    document_type="unknown",
+                    status="failed",
+                    errors=[str(output)],
+                )
+            else:
+                results[wid] = output
+                logger.info(
+                    f"[Registry] {wid} finished: status={output.status}, "
+                    f"confidence={output.confidence:.2f}"
+                )
 
     return results

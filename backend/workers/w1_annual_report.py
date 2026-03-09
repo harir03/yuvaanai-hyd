@@ -8,8 +8,8 @@ Extracts structured financial data from Annual Reports:
 - Litigation Disclosure
 - Director details, board composition
 
-T0 implementation: Mock extraction for demo.
-T1+ will integrate Unstructured.io + Camelot + LLM extraction.
+Uses PyMuPDF for text extraction + Claude Haiku for structured extraction.
+Falls back to mock data when document parsing or LLM is unavailable.
 """
 
 import os
@@ -18,6 +18,9 @@ from typing import Dict, Any, Tuple
 
 from backend.models.schemas import DocumentType
 from backend.workers.base_worker import BaseDocumentWorker
+from backend.agents.ingestor.document_ingestor import DocumentIngestor
+from backend.agents.ingestor.llm_extractor import extract_with_llm, is_llm_available
+from config.prompts.extraction_prompts import ANNUAL_REPORT_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -38,83 +41,105 @@ class AnnualReportWorker(BaseDocumentWorker):
         """
         Extract structured data from an Annual Report.
 
-        T0: Returns mock structured data simulating what the full
-        Unstructured.io + Camelot + LLM pipeline would produce.
-
-        Returns:
-            (extracted_data, pages_processed, confidence)
+        Pipeline: PyMuPDF → Claude Haiku → Structured JSON
+        Falls back to mock data if file is empty or LLM unavailable.
         """
         filename = os.path.basename(self.file_path)
 
-        # Emit reading events (simulating page-by-page processing)
+        # ── Step 1: Parse the document ──
         await self.emitter.read(
-            "Parsing financial statements section...",
+            f"Parsing {filename} with document ingestor...",
             source_document=filename,
-            source_page=12,
         )
+
+        ingestor = DocumentIngestor()
+        ingest_result = await ingestor.ingest(self.file_path, "annual_report")
+
+        pages_processed = ingest_result.total_pages
+        doc_text = ingest_result.full_text
+
+        if not doc_text or len(doc_text.strip()) < 100:
+            await self.emitter.flagged(
+                f"Document {filename} has insufficient text ({len(doc_text)} chars), using mock data",
+                source_document=filename,
+            )
+            return self._mock_data(), pages_processed or 1, 0.5
 
         await self.emitter.found(
-            "Revenue FY2023: ₹142.3 crores (standalone)",
+            f"Extracted {len(doc_text)} chars from {pages_processed} pages (method: {ingest_result.method})",
             source_document=filename,
-            source_page=45,
-            source_excerpt="Total Revenue from Operations: ₹1,42,30,00,000",
-            confidence=0.92,
+            confidence=ingest_result.average_confidence,
         )
 
-        await self.emitter.found(
-            "Revenue FY2022: ₹128.7 crores | FY2021: ₹115.4 crores",
-            source_document=filename,
-            source_page=46,
-            confidence=0.90,
-        )
-
+        # ── Step 2: LLM Extraction ──
         await self.emitter.read(
-            "Scanning auditor's report for qualifications...",
+            "Sending to Claude Haiku for structured financial extraction...",
             source_document=filename,
-            source_page=8,
         )
 
-        await self.emitter.found(
-            "Auditor qualification: Emphasis of Matter on inventory valuation",
-            source_document=filename,
-            source_page=9,
-            source_excerpt="We draw attention to Note 12 regarding inventory valuation methodology...",
-            confidence=0.88,
+        template_vars = {
+            "company_name": "Unknown",
+            "fy_current": "2023",
+            "fy_prev1": "2022",
+            "fy_prev2": "2021",
+        }
+
+        extracted = await extract_with_llm(
+            document_text=doc_text,
+            prompt_template=ANNUAL_REPORT_EXTRACTION_PROMPT,
+            template_vars=template_vars,
         )
 
-        await self.emitter.read(
-            "Extracting Related Party Transactions (RPTs)...",
-            source_document=filename,
-            source_page=67,
-        )
+        if "_llm_error" in extracted:
+            await self.emitter.flagged(
+                f"LLM extraction failed: {extracted['_llm_error']}, using heuristic data",
+                source_document=filename,
+            )
+            confidence = 0.4
+        else:
+            confidence = ingest_result.average_confidence
+            # Emit key findings
+            revenue = extracted.get("revenue", {})
+            if isinstance(revenue, dict):
+                fy_val = revenue.get("fy2023") or revenue.get("fy_current")
+                if fy_val:
+                    await self.emitter.found(
+                        f"Revenue FY2023: ₹{fy_val}",
+                        source_document=filename,
+                        confidence=confidence,
+                    )
 
-        await self.emitter.found(
-            "5 Related Party Transactions totalling ₹18.4 crores disclosed",
-            source_document=filename,
-            source_page=68,
-            confidence=0.85,
-        )
+            rpts = extracted.get("rpts", {})
+            if isinstance(rpts, dict) and rpts.get("count"):
+                await self.emitter.found(
+                    f"{rpts['count']} Related Party Transactions found",
+                    source_document=filename,
+                    confidence=confidence,
+                )
 
-        await self.emitter.read(
-            "Extracting litigation disclosure from Notes to Accounts...",
-            source_document=filename,
-            source_page=72,
-        )
+            auditor_quals = extracted.get("auditor_qualifications", [])
+            if auditor_quals:
+                await self.emitter.flagged(
+                    f"Auditor qualifications detected: {len(auditor_quals)} item(s)",
+                    source_document=filename,
+                    confidence=confidence,
+                )
 
-        await self.emitter.found(
-            "2 litigation cases disclosed: 1 tax dispute (₹3.2 cr), 1 commercial (₹1.8 cr)",
-            source_document=filename,
-            source_page=73,
-            confidence=0.87,
-        )
+        extracted["_source_file"] = filename
+        extracted["_pages_processed"] = pages_processed
+        extracted["_extraction_method"] = "llm" if "_llm_error" not in extracted else "heuristic"
 
-        # Mock extracted data — realistic for XYZ Steel example
-        extracted_data = {
+        return extracted, pages_processed, confidence
+
+    @staticmethod
+    def _mock_data() -> Dict[str, Any]:
+        """Mock data fallback for demo — XYZ Steel example."""
+        return {
             "company_name": "XYZ Steel Industries Ltd",
             "cin": "L27100MH2001PLC123456",
             "financial_year": "FY2023",
             "revenue": {
-                "fy2023": 14230.0,  # in lakhs
+                "fy2023": 14230.0,
                 "fy2022": 12870.0,
                 "fy2021": 11540.0,
                 "unit": "lakhs",
@@ -134,26 +159,14 @@ class AnnualReportWorker(BaseDocumentWorker):
                 "unit": "lakhs",
                 "source_page": 46,
             },
-            "total_debt": {
-                "fy2023": 8540.0,
-                "unit": "lakhs",
-                "source_page": 50,
-            },
-            "net_worth": {
-                "fy2023": 6320.0,
-                "unit": "lakhs",
-                "source_page": 50,
-            },
+            "total_debt": {"fy2023": 8540.0, "unit": "lakhs", "source_page": 50},
+            "net_worth": {"fy2023": 6320.0, "unit": "lakhs", "source_page": 50},
             "auditor_qualifications": [
-                {
-                    "type": "emphasis_of_matter",
-                    "detail": "Inventory valuation methodology — Note 12",
-                    "source_page": 9,
-                },
+                {"type": "emphasis_of_matter", "detail": "Inventory valuation methodology — Note 12", "source_page": 9},
             ],
             "rpts": {
                 "count": 5,
-                "total_amount": 1840.0,  # lakhs
+                "total_amount": 1840.0,
                 "transactions": [
                     {"party": "ABC Trading (promoter entity)", "amount": 720.0, "nature": "purchases"},
                     {"party": "PQR Logistics (director interest)", "amount": 480.0, "nature": "services"},
@@ -176,14 +189,6 @@ class AnnualReportWorker(BaseDocumentWorker):
                 {"name": "Priya Sharma", "designation": "Independent Director", "din": "00789012"},
                 {"name": "Vikram Desai", "designation": "CFO", "din": "00345678"},
             ],
-            "auditor": {
-                "name": "M/s. RST & Associates",
-                "type": "Statutory Auditor",
-                "opinion": "Qualified (with Emphasis of Matter)",
-            },
+            "auditor": {"name": "M/s. RST & Associates", "type": "Statutory Auditor", "opinion": "Qualified (with Emphasis of Matter)"},
+            "_extraction_method": "mock",
         }
-
-        pages_processed = 84
-        confidence = 0.89
-
-        return extracted_data, pages_processed, confidence

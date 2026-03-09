@@ -204,6 +204,7 @@ async def upload_documents(
             filename=safe_name,
             document_type=doc_type,
             file_size=len(content),
+            file_path=file_path,
         )
         documents.append(doc_meta)
         logger.info(f"[Upload] Saved {safe_name} ({doc_type.value}) — {len(content)} bytes")

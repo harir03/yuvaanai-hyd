@@ -8,8 +8,8 @@ Extracts structured data from Credit Rating Reports:
 - Watch/review status
 - Peer comparison signals
 
-T0/T3 implementation: Mock extraction for demo.
-Future: PDF parser + LLM extraction for CRISIL/ICRA/CARE/India Ratings formats.
+Uses PyMuPDF for parsing + Claude Haiku for extraction.
+Falls back to mock data when parsing or LLM is unavailable.
 """
 
 import os
@@ -18,6 +18,9 @@ from typing import Dict, Any, Tuple
 
 from backend.models.schemas import DocumentType
 from backend.workers.base_worker import BaseDocumentWorker
+from backend.agents.ingestor.document_ingestor import DocumentIngestor
+from backend.agents.ingestor.llm_extractor import extract_with_llm
+from config.prompts.extraction_prompts import RATING_REPORT_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -35,100 +38,90 @@ class RatingReportWorker(BaseDocumentWorker):
     display_name = "W8 — Rating Report Parser"
 
     async def _extract(self) -> Tuple[Dict[str, Any], int, float]:
-        """
-        Extract structured data from Rating Reports.
-
-        Returns:
-            (extracted_data, pages_processed, confidence)
-        """
+        """Extract structured data from Rating Reports."""
         filename = os.path.basename(self.file_path)
 
+        # ── Step 1: Parse the document ──
         await self.emitter.read(
-            "Parsing credit rating report — identifying agency and rating details...",
+            f"Parsing {filename} with document ingestor...",
             source_document=filename,
-            source_page=1,
         )
+
+        ingestor = DocumentIngestor()
+        ingest_result = await ingestor.ingest(self.file_path, "rating_report")
+
+        pages_processed = ingest_result.total_pages
+        doc_text = ingest_result.full_text
+
+        if not doc_text or len(doc_text.strip()) < 100:
+            await self.emitter.flagged(
+                f"Document {filename} has insufficient text ({len(doc_text)} chars), using mock data",
+                source_document=filename,
+            )
+            return self._mock_data(), pages_processed or 1, 0.5
 
         await self.emitter.found(
-            "Rating Agency: CRISIL | Report Date: December 2023",
+            f"Extracted {len(doc_text)} chars from {pages_processed} pages (method: {ingest_result.method})",
             source_document=filename,
-            source_page=1,
-            confidence=0.97,
+            confidence=ingest_result.average_confidence,
         )
 
+        # ── Step 2: LLM Extraction ──
         await self.emitter.read(
-            "Extracting current rating and outlook...",
+            "Sending to Claude Haiku for rating report analysis...",
             source_document=filename,
-            source_page=2,
         )
 
-        await self.emitter.found(
-            "Current Rating: CRISIL BBB+ (Stable) | Long-term bank facilities ₹85 cr",
-            source_document=filename,
-            source_page=2,
-            source_excerpt="CRISIL has assigned its 'CRISIL BBB+/Stable' rating to the long-term bank facilities",
-            confidence=0.96,
+        template_vars = {
+            "company_name": "Unknown",
+            "rating_agency": "Unknown",
+        }
+
+        extracted = await extract_with_llm(
+            document_text=doc_text,
+            prompt_template=RATING_REPORT_EXTRACTION_PROMPT,
+            template_vars=template_vars,
         )
 
-        await self.emitter.read(
-            "Checking rating history for upgrades/downgrades...",
-            source_document=filename,
-            source_page=4,
-        )
+        if "_llm_error" in extracted:
+            await self.emitter.flagged(
+                f"LLM extraction failed: {extracted['_llm_error']}, using heuristic data",
+                source_document=filename,
+            )
+            confidence = 0.4
+        else:
+            confidence = ingest_result.average_confidence
+            current = extracted.get("current_rating", {})
+            if isinstance(current, dict) and current.get("long_term"):
+                await self.emitter.found(
+                    f"Current Rating: {current.get('long_term')} ({current.get('outlook', 'N/A')})",
+                    source_document=filename,
+                    confidence=confidence,
+                )
+            downgrade = extracted.get("downgrade_details", {})
+            if isinstance(downgrade, dict) and downgrade.get("has_downgrade"):
+                await self.emitter.flagged(
+                    f"Rating downgrade detected: {downgrade.get('from_rating')} → {downgrade.get('to_rating')}",
+                    source_document=filename,
+                    confidence=confidence,
+                )
 
-        await self.emitter.found(
-            "Rating History: A- (2021) → BBB+ (2022) → BBB+ (2023) — downgraded from A- in Mar 2022",
-            source_document=filename,
-            source_page=4,
-            confidence=0.94,
-        )
+        extracted["_source_file"] = filename
+        extracted["_pages_processed"] = pages_processed
+        extracted["_extraction_method"] = "llm" if "_llm_error" not in extracted else "heuristic"
 
-        # Flag the downgrade
-        await self.emitter.flagged(
-            "RATING DOWNGRADE: A- → BBB+ (Mar 2022) — cited deteriorating debt metrics and WC stress",
-            source_document=filename,
-            source_page=4,
-            confidence=0.93,
-        )
+        return extracted, pages_processed, confidence
 
-        await self.emitter.read(
-            "Extracting key strengths and weaknesses from rating rationale...",
-            source_document=filename,
-            source_page=6,
-        )
-
-        await self.emitter.found(
-            "Strengths: 15yr track record, diversified customer base | "
-            "Weaknesses: High working capital needs, cyclical steel sector, elevated D/E",
-            source_document=filename,
-            source_page=7,
-            confidence=0.90,
-        )
-
-        await self.emitter.read(
-            "Checking for watch/review status...",
-            source_document=filename,
-            source_page=8,
-        )
-
-        await self.emitter.found(
-            "No active rating watch — outlook is Stable, next review due Jun 2024",
-            source_document=filename,
-            source_page=8,
-            confidence=0.95,
-        )
-
-        extracted_data = {
+    @staticmethod
+    def _mock_data() -> Dict[str, Any]:
+        """Mock data fallback for demo — XYZ Steel example."""
+        return {
             "company_name": "XYZ Steel Industries Ltd",
             "rating_agency": "CRISIL",
             "report_date": "2023-12-15",
             "current_rating": {
-                "long_term": "BBB+",
-                "short_term": "A2",
-                "outlook": "Stable",
-                "facility_type": "Long-term bank facilities",
-                "facility_amount": 8500.0,  # lakhs
-                "source_page": 2,
+                "long_term": "BBB+", "short_term": "A2", "outlook": "Stable",
+                "facility_type": "Long-term bank facilities", "facility_amount": 8500.0, "source_page": 2,
             },
             "rating_history": [
                 {"date": "2023-12-15", "rating": "BBB+", "outlook": "Stable", "action": "Reaffirmed"},
@@ -138,11 +131,8 @@ class RatingReportWorker(BaseDocumentWorker):
                 {"date": "2020-12-01", "rating": "A-", "outlook": "Stable", "action": "Reaffirmed"},
             ],
             "downgrade_details": {
-                "has_downgrade": True,
-                "last_downgrade_date": "2022-03-10",
-                "from_rating": "A-",
-                "to_rating": "BBB+",
-                "notches": 1,
+                "has_downgrade": True, "last_downgrade_date": "2022-03-10",
+                "from_rating": "A-", "to_rating": "BBB+", "notches": 1,
                 "reasons": [
                     "Deteriorating debt coverage metrics (DSCR declined from 1.6x to 1.2x)",
                     "Elevated working capital requirements due to steel price volatility",
@@ -150,11 +140,7 @@ class RatingReportWorker(BaseDocumentWorker):
                 ],
                 "source_page": 4,
             },
-            "watch_status": {
-                "on_watch": False,
-                "watch_type": None,
-                "next_review_date": "2024-06-30",
-            },
+            "watch_status": {"on_watch": False, "watch_type": None, "next_review_date": "2024-06-30"},
             "key_strengths": [
                 "Established track record of 15+ years in steel manufacturing",
                 "Diversified customer base across construction, auto, and infrastructure",
@@ -168,26 +154,16 @@ class RatingReportWorker(BaseDocumentWorker):
                 "Customer concentration — top 5 customers contribute 45% of revenue",
             ],
             "financial_indicators_from_rating": {
-                "revenue_fy23": 14230.0,  # lakhs (from rating report)
-                "ebitda_margin": 15.0,     # %
-                "pat_margin": 7.0,          # %
-                "debt_equity": 1.35,
-                "interest_coverage": 2.1,
-                "current_ratio": 1.15,
-                "source_page": 6,
+                "revenue_fy23": 14230.0, "ebitda_margin": 15.0, "pat_margin": 7.0,
+                "debt_equity": 1.35, "interest_coverage": 2.1, "current_ratio": 1.15, "source_page": 6,
             },
             "peer_comparison": {
-                "industry_median_rating": "A-",
-                "company_position": "Below median",
+                "industry_median_rating": "A-", "company_position": "Below median",
                 "peer_companies": [
                     {"name": "Alpha Steel Ltd", "rating": "A", "outlook": "Stable"},
                     {"name": "Beta Metals Corp", "rating": "A-", "outlook": "Stable"},
                     {"name": "Gamma Iron Works", "rating": "BBB+", "outlook": "Positive"},
                 ],
             },
+            "_extraction_method": "mock",
         }
-
-        pages_processed = 12
-        confidence = 0.92
-
-        return extracted_data, pages_processed, confidence
