@@ -1,9 +1,10 @@
 "use client";
 
-import { Power, ChevronRight, Bell, Wifi, WifiOff } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { Power, ChevronRight, Bell, Wifi, WifiOff, User } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { isBackendAvailable } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 const PAGE_TITLES: Record<string, string> = {
     "/": "Upload Documents",
@@ -18,6 +19,8 @@ const PAGE_TITLES: Record<string, string> = {
 
 export function Header() {
     const pathname = usePathname();
+    const router = useRouter();
+    const { user, logout } = useAuth();
     const pageTitle = PAGE_TITLES[pathname] ?? "Dashboard";
     const [wsConnected, setWsConnected] = useState(false);
 
@@ -58,9 +61,16 @@ export function Header() {
                     <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
                 </button>
 
-                {/* Logout */}
+                {/* User info + Logout */}
+                {user && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                        <User className="w-3.5 h-3.5 text-teal-600" />
+                        <span className="text-xs font-medium text-slate-600">{user.username}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{user.role}</span>
+                    </div>
+                )}
                 <button
-                    onClick={() => alert("Logout clicked")}
+                    onClick={() => { logout(); router.replace("/login"); }}
                     className="p-2.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-50 transition-all cursor-pointer"
                 >
                     <Power className="w-5 h-5" />

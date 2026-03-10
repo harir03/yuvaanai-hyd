@@ -32,15 +32,27 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 
+// --- Auth token helper -------------------------------------------------------
+
+function getToken(): string | null {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("intelli_credit_token");
+}
+
 // --- Helpers -----------------------------------------------------------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = getToken();
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(init?.headers as Record<string, string> ?? {}),
+    };
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+    }
     const res = await fetch(`${API_BASE}${path}`, {
         ...init,
-        headers: {
-            "Content-Type": "application/json",
-            ...init?.headers,
-        },
+        headers,
     });
     if (!res.ok) {
         throw new Error(`API ${res.status}: ${res.statusText}`);
@@ -530,8 +542,15 @@ export async function uploadDocuments(params: UploadParams): Promise<UploadResul
     }
     formData.append("document_types", docTypes.join(","));
 
+    const token = getToken();
+    const uploadHeaders: Record<string, string> = {};
+    if (token) {
+        uploadHeaders["Authorization"] = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_BASE}/api/upload`, {
         method: "POST",
+        headers: uploadHeaders,
         body: formData,
     });
 
@@ -880,7 +899,9 @@ export function connectThinkingWS(
     onClose?: () => void,
     onError?: (err: Event) => void,
 ): WebSocket {
-    const ws = new WebSocket(`${WS_BASE}/ws/thinking/${encodeURIComponent(sessionId)}`);
+    const token = getToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+    const ws = new WebSocket(`${WS_BASE}/ws/thinking/${encodeURIComponent(sessionId)}${tokenParam}`);
 
     ws.onopen = () => onOpen?.();
 
@@ -914,7 +935,9 @@ export function connectProgressWS(
     onOpen?: () => void,
     onClose?: () => void,
 ): WebSocket {
-    const ws = new WebSocket(`${WS_BASE}/ws/progress/${encodeURIComponent(sessionId)}`);
+    const token = getToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+    const ws = new WebSocket(`${WS_BASE}/ws/progress/${encodeURIComponent(sessionId)}${tokenParam}`);
 
     ws.onopen = () => onOpen?.();
 
