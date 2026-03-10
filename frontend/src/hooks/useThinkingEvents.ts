@@ -10,7 +10,7 @@ import { useState, useCallback, useMemo } from "react";
 import { useWebSocket } from "./useWebSocket";
 import { type ThinkingEvent, mockThinkingEvents } from "@/lib/mockData";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 
 interface UseThinkingEventsOptions {

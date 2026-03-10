@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const login = useCallback(async (username: string, password: string) => {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
         const res = await fetch(`${API_BASE}/api/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

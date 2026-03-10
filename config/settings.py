@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # ── LLM ──
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    ollama_model: str = Field(default="mistral", alias="OLLAMA_MODEL")
     langchain_tracing_v2: bool = Field(default=False, alias="LANGCHAIN_TRACING_V2")
     langchain_api_key: str = Field(default="", alias="LANGCHAIN_API_KEY")
     langchain_project: str = Field(default="intelli-credit", alias="LANGCHAIN_PROJECT")

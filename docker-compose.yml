@@ -142,6 +142,8 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       ELASTICSEARCH_URL: http://elasticsearch:9200
       CHROMADB_HOST: chromadb
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
     depends_on:
       redis:
         condition: service_healthy
@@ -173,6 +175,8 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       ELASTICSEARCH_URL: http://elasticsearch:9200
       CHROMADB_HOST: chromadb
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
     depends_on:
       redis:
         condition: service_healthy

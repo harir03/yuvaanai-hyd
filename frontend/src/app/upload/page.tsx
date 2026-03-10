@@ -30,6 +30,13 @@ const REQUIRED_DOCUMENTS = [
     { type: "Rating Report", label: "Credit Rating Report", icon: FileText, required: false },
 ];
 
+function formatFileSize(sizeInBytes: number): string {
+    if (sizeInBytes < 1024) return `${sizeInBytes} B`;
+    if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`;
+    if (sizeInBytes < 1024 * 1024 * 1024) return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 export default function UploadPage() {
     const router = useRouter();
     const [companyName, setCompanyName] = useState("");
@@ -69,7 +76,7 @@ export default function UploadPage() {
 
     const totalRequired = REQUIRED_DOCUMENTS.filter((d) => d.required).length;
     const requiredUploaded = REQUIRED_DOCUMENTS.filter((d) => d.required && uploadedFiles[d.type]).length;
-    const canSubmit = companyName && cin && loanAmount && requiredUploaded >= totalRequired;
+    const canSubmit = companyName && cin && loanAmount && sector.trim() && requiredUploaded >= totalRequired;
 
     const handleStartAssessment = async () => {
         setIsSubmitting(true);
@@ -167,7 +174,7 @@ export default function UploadPage() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sector</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sector *</label>
                                 <input
                                     type="text"
                                     value={sector}
@@ -281,7 +288,7 @@ export default function UploadPage() {
                                                 <File className="w-4 h-4 text-teal-500 shrink-0" />
                                                 <span className="text-xs font-medium text-slate-700 truncate">{uploaded.name}</span>
                                                 <span className="text-[10px] text-slate-400 shrink-0">
-                                                    {(uploaded.size / 1024 / 1024).toFixed(1)} MB
+                                                    {formatFileSize(uploaded.size)}
                                                 </span>
                                             </div>
                                             <button
