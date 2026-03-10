@@ -17,6 +17,8 @@ import os
 import logging
 from typing import Optional
 
+from kombu import Queue
+
 logger = logging.getLogger(__name__)
 
 # Try to import Celery — fall back gracefully if not available / no broker
@@ -33,6 +35,7 @@ try:
         "intelli_credit",
         broker=broker_url,
         backend=result_backend,
+        include=["backend.workers.tasks"],
     )
 
     celery_app.conf.update(
@@ -48,6 +51,8 @@ try:
         worker_prefetch_multiplier=1,  # One task per worker (fairness)
 
         # Task routing — each worker type gets its own queue
+        task_default_queue="workers",
+        task_queues=(Queue("workers"),),
         task_routes={
             "backend.workers.tasks.process_annual_report": {"queue": "workers"},
             "backend.workers.tasks.process_bank_statement": {"queue": "workers"},
