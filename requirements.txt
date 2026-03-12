@@ -7,7 +7,8 @@ pydantic>=2.12.0
 pydantic-settings>=2.13.0
 
 # ── Task Queue ──
-celery[redis]>=5.3.6
+# Keep redis client managed by `redis[hiredis]` below to avoid Celery extra pinning redis<6.
+celery>=5.3.6
 flower>=2.0.1
 
 # ── Database Drivers ──

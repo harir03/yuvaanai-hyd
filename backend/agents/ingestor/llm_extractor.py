@@ -1,16 +1,20 @@
 """
 Intelli-Credit — LLM Extraction Service
 
-Calls Claude (Haiku for extraction, Sonnet for complex reasoning) to
-extract structured JSON from document text using prompt templates.
+Calls Ollama (Mistral) to extract structured JSON from document text
+using prompt templates.
 
-Falls back to a regex-based heuristic extractor when no API key is set.
+Claude initialization/invoke code is intentionally retained in comments
+for fallback/reference, as requested.
+
+Falls back to a regex-based heuristic extractor when Ollama is unavailable.
 """
 
 import json
 import logging
 import re
 from typing import Dict, Any, Optional
+import httpx
 
 from config.settings import settings
 
@@ -18,42 +22,48 @@ logger = logging.getLogger(__name__)
 
 # ── LLM availability ──
 _HAS_LLM = False
-_llm_haiku = None
-_llm_sonnet = None
+_ollama_base_url = ""
+_ollama_model = ""
 
 
 def _init_llm():
     """Lazily initialize LLM clients."""
-    global _HAS_LLM, _llm_haiku, _llm_sonnet
+    global _HAS_LLM, _ollama_base_url, _ollama_model
 
-    if _llm_haiku is not None:
+    if _ollama_base_url:
         return
 
-    if not settings.anthropic_api_key:
-        logger.warning("[LLM] No ANTHROPIC_API_KEY set — using heuristic fallback")
-        _HAS_LLM = False
-        return
+    _ollama_base_url = settings.ollama_base_url.rstrip("/")
+    _ollama_model = settings.ollama_model
+    _HAS_LLM = True
+    logger.info("[LLM] Ollama initialized (model=%s, base_url=%s)", _ollama_model, _ollama_base_url)
 
-    try:
-        from langchain_anthropic import ChatAnthropic
-
-        _llm_haiku = ChatAnthropic(
-            model="claude-3-5-haiku-20241022",
-            api_key=settings.anthropic_api_key,
-            temperature=0.0,
-            max_tokens=4096,
-        )
-        _llm_sonnet = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=settings.anthropic_api_key,
-            temperature=0.0,
-            max_tokens=8192,
-        )
-        _HAS_LLM = True
-        logger.info("[LLM] Claude Haiku + Sonnet initialized")
-    except Exception as e:
-        logger.warning(f"[LLM] Failed to initialize: {e}")
-        _HAS_LLM = False
+    # Claude path retained as comments per request.
+    # if not settings.anthropic_api_key:
+    #     logger.warning("[LLM] No ANTHROPIC_API_KEY set — using heuristic fallback")
+    #     _HAS_LLM = False
+    #     return
+    #
+    # try:
+    #     from langchain_anthropic import ChatAnthropic
+    #
+    #     _llm_haiku = ChatAnthropic(
+    #         model="claude-3-5-haiku-20241022",
+    #         api_key=settings.anthropic_api_key,
+    #         temperature=0.0,
+    #         max_tokens=4096,
+    #     )
+    #     _llm_sonnet = ChatAnthropic(
+    #         model="claude-sonnet-4-20250514",
+    #         api_key=settings.anthropic_api_key,
+    #         temperature=0.0,
+    #         max_tokens=8192,
+    #     )
+    #     _HAS_LLM = True
+    #     logger.info("[LLM] Claude Haiku + Sonnet initialized")
+    # except Exception as e:
+    #     logger.warning(f"[LLM] Failed to initialize: {e}")
+    #     _HAS_LLM = False
 
 
 async def extract_with_llm(
@@ -64,13 +74,13 @@ async def extract_with_llm(
     max_text_chars: int = 80000,
 ) -> Dict[str, Any]:
     """
-    Extract structured data from document text using Claude.
+    Extract structured data from document text using Ollama Mistral.
 
     Args:
         document_text: The raw text extracted from the document.
         prompt_template: Prompt template string with {placeholders}.
         template_vars: Variables to fill into the prompt template.
-        use_sonnet: If True, use Sonnet (complex reasoning). Default: Haiku (extraction).
+        use_sonnet: Kept for compatibility. Ignored for Ollama routing.
         max_text_chars: Maximum characters of document text to send.
 
     Returns:
@@ -91,31 +101,49 @@ async def extract_with_llm(
         filled_prompt = prompt_template
 
     if _HAS_LLM:
-        return await _call_llm(filled_prompt, use_sonnet)
-    else:
-        logger.info("[LLM] No API key — using heuristic extraction")
-        return _heuristic_extract(document_text)
+        llm_result = await _call_llm(filled_prompt, use_sonnet)
+        if isinstance(llm_result, dict) and "_llm_error" in llm_result:
+            logger.warning("[LLM] Ollama call failed — using heuristic extraction")
+            return _heuristic_extract(document_text)
+        return llm_result
+
+    logger.info("[LLM] No Ollama runtime available — using heuristic extraction")
+    return _heuristic_extract(document_text)
 
 
 async def _call_llm(prompt: str, use_sonnet: bool) -> Dict[str, Any]:
-    """Call Claude and parse JSON response."""
-    model = _llm_sonnet if use_sonnet else _llm_haiku
-    model_name = "Sonnet" if use_sonnet else "Haiku"
+    """Call Ollama and parse JSON response."""
+    model_name = _ollama_model
+    request_prompt = (
+        "You are a financial document extraction specialist. "
+        "Return ONLY valid JSON, no markdown, no explanation.\n\n"
+        f"{prompt}"
+    )
+    raw = ""
 
     try:
-        logger.info(f"[LLM] Calling Claude {model_name} ({len(prompt)} chars)")
+        logger.info(f"[LLM] Calling Ollama {model_name} ({len(prompt)} chars)")
 
-        response = await model.ainvoke(
-            f"You are a financial document extraction specialist. "
-            f"Return ONLY valid JSON, no markdown, no explanation.\n\n{prompt}"
-        )
-
-        raw = response.content if hasattr(response, "content") else str(response)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            response = await client.post(
+                f"{_ollama_base_url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": request_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0,
+                    },
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            raw = str(payload.get("response", "")).strip()
 
         # Extract JSON from response (handle markdown code blocks)
         json_str = _extract_json_from_response(raw)
         result = json.loads(json_str)
-        logger.info(f"[LLM] Claude {model_name} returned {len(result)} top-level keys")
+        logger.info(f"[LLM] Ollama {model_name} returned {len(result)} top-level keys")
         return result
 
     except json.JSONDecodeError as e:
@@ -128,7 +156,13 @@ async def _call_llm(prompt: str, use_sonnet: bool) -> Dict[str, Any]:
             return {"_llm_error": "JSON parse failed", "_raw_response": raw[:500]}
 
     except Exception as e:
-        logger.error(f"[LLM] Claude {model_name} call failed: {e}")
+        logger.error(f"[LLM] Ollama {model_name} call failed: {e}")
+
+        # Claude invocation path retained as comments per request.
+        # model = _llm_sonnet if use_sonnet else _llm_haiku
+        # response = await model.ainvoke(request_prompt)
+        # raw = response.content if hasattr(response, "content") else str(response)
+
         return {"_llm_error": str(e)}
 
 

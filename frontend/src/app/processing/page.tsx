@@ -166,7 +166,7 @@ function ProcessingContent() {
     ];
 
     return (
-        <div className="p-6 space-y-6 max-w-[1600px] mx-auto min-h-screen">
+        <div className="p-6 space-y-6 max-w-[1800px] mx-auto min-h-screen">
             {/* Page Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -204,7 +204,7 @@ function ProcessingContent() {
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
                 {/* Left Column — Pipeline + Workers */}
-                <div className="xl:col-span-4 space-y-6">
+                <div className="xl:col-span-6 space-y-6">
                     {/* Pipeline Stages */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                         <h2 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -247,52 +247,54 @@ function ProcessingContent() {
                         </div>
                     </div>
 
-                    {/* Worker Status Panel */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                        <h2 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-slate-400" />
-                            Document Workers
-                        </h2>
-                        <div className="space-y-3">
-                            {workers.map((worker) => (
-                                <div key={worker.name} className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-bold text-slate-700">{worker.name}</span>
-                                        <span className={cn(
-                                            "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded",
-                                            worker.status === "completed" ? "bg-emerald-50 text-emerald-600" :
-                                            worker.status === "processing" ? "bg-teal-50 text-teal-600" :
-                                            worker.status === "error" ? "bg-red-50 text-red-500" :
-                                            "bg-slate-50 text-slate-400"
-                                        )}>
-                                            {worker.status}
-                                        </span>
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-3 items-start">
+                        {/* Worker Status Panel */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                            <h2 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Zap className="w-4 h-4 text-slate-400" />
+                                Document Workers
+                            </h2>
+                            <div className="space-y-3">
+                                {workers.map((worker) => (
+                                    <div key={worker.name} className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-bold text-slate-700">{worker.name}</span>
+                                            <span className={cn(
+                                                "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded",
+                                                worker.status === "completed" ? "bg-emerald-50 text-emerald-600" :
+                                                worker.status === "processing" ? "bg-teal-50 text-teal-600" :
+                                                worker.status === "error" ? "bg-red-50 text-red-500" :
+                                                "bg-slate-50 text-slate-400"
+                                            )}>
+                                                {worker.status}
+                                            </span>
+                                        </div>
+                                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className={cn(
+                                                    "h-full rounded-full transition-all duration-500",
+                                                    worker.status === "completed" ? "bg-emerald-400" :
+                                                    worker.status === "processing" ? "bg-teal-400" :
+                                                    worker.status === "error" ? "bg-red-400" : "bg-slate-200"
+                                                )}
+                                                style={{ width: `${worker.progress}%` }}
+                                            />
+                                        </div>
+                                        {worker.currentTask && (
+                                            <p className="text-[10px] text-slate-400 truncate">{worker.currentTask}</p>
+                                        )}
                                     </div>
-                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                        <div
-                                            className={cn(
-                                                "h-full rounded-full transition-all duration-500",
-                                                worker.status === "completed" ? "bg-emerald-400" :
-                                                worker.status === "processing" ? "bg-teal-400" :
-                                                worker.status === "error" ? "bg-red-400" : "bg-slate-200"
-                                            )}
-                                            style={{ width: `${worker.progress}%` }}
-                                        />
-                                    </div>
-                                    {worker.currentTask && (
-                                        <p className="text-[10px] text-slate-400 truncate">{worker.currentTask}</p>
-                                    )}
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Flower Embed */}
-                    <FlowerEmbed />
+                        {/* Flower Embed */}
+                        <FlowerEmbed />
+                    </div>
                 </div>
 
                 {/* Right Column — Live Thinking Chatbot */}
-                <div className="xl:col-span-8">
+                <div className="xl:col-span-6">
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-300px)] min-h-[500px]">
                         {/* Chatbot Header */}
                         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">

@@ -540,7 +540,7 @@ export async function uploadDocuments(params: UploadParams): Promise<UploadResul
         formData.append("files", file);
         docTypes.push(docType);
     }
-    formData.append("document_types", docTypes.join(","));
+    formData.append("document_types", JSON.stringify(docTypes));
 
     const token = getToken();
     const uploadHeaders: Record<string, string> = {};
@@ -555,7 +555,24 @@ export async function uploadDocuments(params: UploadParams): Promise<UploadResul
     });
 
     if (!res.ok) {
-        throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+        let detail = "";
+        try {
+            const errorJson = await res.json();
+            if (Array.isArray(errorJson?.detail)) {
+                detail = errorJson.detail
+                    .map((d: { loc?: unknown[]; msg?: string }) => {
+                        const field = Array.isArray(d.loc) ? String(d.loc[d.loc.length - 1] ?? "field") : "field";
+                        return `${field}: ${d.msg ?? "invalid value"}`;
+                    })
+                    .join("; ");
+            } else if (typeof errorJson?.detail === "string") {
+                detail = errorJson.detail;
+            }
+        } catch {
+            // Ignore JSON parse issues and fall back to status text.
+        }
+        const suffix = detail ? ` (${detail})` : "";
+        throw new Error(`Upload failed: ${res.status} ${res.statusText}${suffix}`);
     }
 
     const data: ApiAssessmentSummary = await res.json();
