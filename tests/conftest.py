@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-BASE = "http://localhost:8001"
+BASE = "http://localhost:8000"
 
 
 @pytest.fixture(autouse=True)

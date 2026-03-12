@@ -4,7 +4,7 @@ import httpx
 import json
 import sys
 
-BASE = "http://localhost:8001"
+BASE = "http://localhost:8000"
 
 def test_root():
     r = httpx.get(f"{BASE}/")
