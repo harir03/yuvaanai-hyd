@@ -1,4 +1,4 @@
-# INTELLI-CREDIT — AI-Powered Credit Decisioning Engine
+# INTELLI-CREDIT-AI-Powered Credit Decisioning Engine
 
 > **Architecture Version: A0.1**
 > An end-to-end intelligent credit appraisal system that transforms weeks of manual document review into a fully transparent, AI-driven pipeline completing in under 4 minutes — with every decision sourced, every reasoning step visible, and every outcome permanently recorded.
