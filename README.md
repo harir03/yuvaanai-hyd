@@ -35,7 +35,7 @@
 
 ---
 
-## 1. Project Overview
+## 1. Project Overview...
 
 **Intelli-Credit** is an AI-powered **Credit Appraisal Memo (CAM)** generation system designed for the Indian banking sector. It ingests corporate loan application documents, performs deep multi-source research, detects fraud patterns through graph intelligence, scores the borrower on a 0–850 scale, and produces a fully cited, bank-grade Credit Appraisal Memo — all while showing the credit officer every single step of its reasoning in real time.
 
